@@ -1,0 +1,249 @@
+@page "/login"
+@layout Web.Layout.AuthLayout
+@using Shared.DTO
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+@inject Web.Services.SimpleAuthService AuthService
+
+<div class="auth-container">
+    <div class="auth-header-wrapper" style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 5px;">
+        <img src="logo.png" alt="Logo Votify" style="width: 55px; height: 55px; border-radius: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.15);" />
+        <div class="auth-logo" style="margin: 0;">Votify</div>
+    </div>
+    <p class="auth-subtitle">Inicia sesión en tu cuenta</p>
+    
+    <EditForm EditContext="editContext" OnValidSubmit="HandleLogin">
+        <DataAnnotationsValidator />
+        
+        <div class="form-group">
+            <label for="dni">Documento de Identidad</label>
+            <div style="display: flex; gap: 0.5rem;">
+                <InputSelect @bind-Value="loginModel.TipoDocumento" @bind-Value:after="() => editContext?.NotifyFieldChanged(new FieldIdentifier(loginModel, nameof(loginModel.Dni)))" class="form-control" style="width: 115px; flex-shrink: 0; padding: 0.8rem 0.5rem; text-align: center;">
+                    <option value="DNI">DNI</option>
+                    <option value="NIE">NIE</option>
+                    <option value="Pasaporte">Pasap.</option>
+                </InputSelect>
+                <InputText id="dni" class="form-control" placeholder="Ej: 12345678A" @bind-Value="loginModel.Dni" />
+            </div>
+            <ValidationMessage For="@(() => loginModel.Dni)" />
+
+        </div>
+        <div class="form-group">
+            <label for="password">Contraseña</label>
+            <InputText type="password" id="password" class="form-control" placeholder="••••••••" @bind-Value="loginModel.Contrasenya" />
+            <ValidationMessage For="@(() => loginModel.Contrasenya)" />
+
+        </div>
+        
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div style="margin-bottom: 1rem;">
+                <Web.Components.ErrorAlert Message="@errorMessage" Type="error" />
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(errorMessage) && errorMessage.Contains("Credenciales incorrectas"))
+        {
+            <div style="text-align: center; margin-top: -0.5rem; margin-bottom: 1.5rem;">
+                <a href="/cambiar-contrasena" style="color: var(--accent); font-size: 0.9rem; text-decoration: underline; font-weight: 600;">¿Has olvidado tu contraseña?</a>
+            </div>
+        }
+        <button type="submit" class="btn-primary full-width" disabled="@(isLoading || (editContext != null && editContext.GetValidationMessages().Any()))">
+            @(isLoading ? "Cargando..." : "Entrar a la plataforma")
+        </button>
+    </EditForm>
+    
+    <div class="form-divider" style="height:1px; background:var(--border); margin:2rem 0; position:relative; text-align:center;">
+        <span style="position:absolute; top:-10px; left:50%; transform:translateX(-50%); background:var(--bg-card); padding:0 15px; font-size:0.8rem; color:var(--muted);">O vota como invitado</span>
+    </div>
+
+    <div class="guest-section">
+        <div class="form-group" style="margin-bottom:0.5rem;">
+            <input type="text" class="form-control" placeholder="Introduce el Código de Acceso" @bind="guestCode" style="text-align:center; letter-spacing:2px; font-family:monospace; font-size:1.1rem; text-transform:uppercase;" />
+        </div>
+        <button type="button" class="btn-secondary full-width" style="background:var(--bg-hover); color:var(--text); border:1px solid var(--border); font-weight:600;" @onclick="HandleGuestLogin" disabled="@(string.IsNullOrWhiteSpace(guestCode) || isLoadingGuest)">
+            @(isLoadingGuest ? "Verificando..." : "Votar ahora")
+        </button>
+    </div>
+
+    <div class="auth-footer" style="margin-top: 1.5rem;">
+        ¿No tienes cuenta? <a href="/register">Regístrate ahora</a>
+    </div>
+</div>
+
+@if (showToast)
+{
+    <div class="toast show @(isSuccessToast ? "success" : "error")" id="toast">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            @if (isSuccessToast)
+            {
+                <polyline points="20 6 9 17 4 12" />
+            }
+            else
+            {
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+            }
+        </svg>
+        <span>@toastMessage</span>
+    </div>
+}
+
+@code {
+[SupplyParameterFromQuery]
+public string? Msg { get; set; }
+
+private LoginUsuarioDTO loginModel = new();
+private EditContext? editContext;
+private string errorMessage = "";
+private bool isLoading;
+
+private string guestCode = "";
+private bool isLoadingGuest;
+    
+private bool showToast;
+private bool isSuccessToast;
+private string toastMessage = "";
+
+protected override void OnInitialized()
+{
+    if (Msg == "voto_enviado_ok")
+    {
+        ShowToast("¡Tu voto ha sido enviado correctamente! Gracias por participar.", true);
+    }
+
+    editContext = new EditContext(loginModel);
+    editContext.OnValidationStateChanged += (sender, eventArgs) => StateHasChanged();
+    editContext.OnFieldChanged += (sender, eventArgs) => StateHasChanged();
+}
+
+    private async Task HandleLogin()
+    {
+        isLoading = true;
+        errorMessage = "";
+        
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/usuario/login", loginModel);
+            if (response.IsSuccessStatusCode)
+            {
+                var userResponseJson = await response.Content.ReadAsStringAsync();
+                await AuthService.LogInAsync(userResponseJson);
+
+                ShowToast("Iniciando sesión...", true);
+                await Task.Delay(1500);
+
+                // Chequear si solo es Jurado
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(userResponseJson);
+                    if (doc.RootElement.TryGetProperty("rol", out var rolProp) || doc.RootElement.TryGetProperty("Rol", out rolProp))
+                    {
+                        var rol = rolProp.GetString();
+                        if (rol == "Jurado")
+                        {
+                            NavigationManager.NavigateTo("/mis-votaciones");
+                            return;
+                        }
+                        if (rol == "Concursante")
+                        {
+                            NavigationManager.NavigateTo("/dashboard-concursante");
+                            return;
+                        }
+                    }
+                }
+                catch { }
+
+                NavigationManager.NavigateTo("/listado-eventos");
+            }
+            else
+            {
+                errorMessage = "Credenciales incorrectas.";
+                ShowToast("Credenciales incorrectas o error en login", false);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Error de conexión con el servidor.";
+            ShowToast("Error de conexión", false);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    public class ValidacionAccesoResponse
+    {
+        public int EventoId { get; set; }
+        public int VotacionId { get; set; }
+    }
+
+    private async Task HandleGuestLogin()
+    {
+        isLoadingGuest = true;
+        errorMessage = "";
+        
+        try
+        {
+            var codeClean = guestCode.Trim().ToUpper();
+            var res = await Http.GetAsync($"api/Votacion/acceso/{codeClean}");
+            if (res.IsSuccessStatusCode)
+            {
+                var data = await res.Content.ReadFromJsonAsync<ValidacionAccesoResponse>();
+                
+                // Set faux token or user properties in local storage to remember this is a guest
+                var guestJson = System.Text.Json.JsonSerializer.Serialize(new {
+                    Id = 0, // generic or null ID for guest
+                    Nombre = "Invitado",
+                    Rol = "Invitado",
+                    GuestCode = codeClean, // good to tie the voting back to this code
+                    GuestVotacionId = data.VotacionId
+                });
+                
+                await AuthService.LogInAsync(guestJson);
+
+                ShowToast("Entrando al evento...", true);
+                await Task.Delay(1000);
+                
+                if (data != null)
+                {
+                    NavigationManager.NavigateTo($"/detalle-evento?Id={data.EventoId}");
+                }
+            }
+            else
+            {
+                var dict = await res.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+                var msg = dict?.ContainsKey("message") == true ? dict["message"] : "Código inválido";
+                
+                errorMessage = msg;
+                ShowToast(msg, false);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Error de conexión verificando el código.";
+            ShowToast("Error de red", false);
+        }
+        finally
+        {
+            isLoadingGuest = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowToast(string message, bool success)
+    {
+        toastMessage = message;
+        isSuccessToast = success;
+        showToast = true;
+        StateHasChanged();
+        
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(3000);
+            showToast = false;
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+}

@@ -1,0 +1,12 @@
+﻿@page "/"
+@inject NavigationManager NavigationManager
+
+<PageTitle>Redirigiendo...</PageTitle>
+
+@code {
+    protected override void OnInitialized()
+    {
+        // En lugar de renderizar, redirigimos a login
+        NavigationManager.NavigateTo("/login");
+    }
+}

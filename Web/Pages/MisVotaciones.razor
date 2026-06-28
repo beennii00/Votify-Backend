@@ -1,0 +1,255 @@
+﻿@page "/mis-votaciones"
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+@inject Web.Services.SimpleAuthService AuthService
+
+<main>
+    <div class="page-header" style="margin-bottom: 2rem; display: flex; flex-direction: column; align-items: flex-start; text-align: left;">
+        <h1 class="page-title" style="margin-bottom: 0.5rem;">Mis Votaciones</h1>
+        <p class="page-subtitle" style="margin-top: 0; color: var(--muted); font-size: 1rem;">Votaciones en las que participas como jurado</p>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="empty-state">
+            <p>Cargando tus votaciones...</p>
+        </div>
+    }
+    else if (votaciones == null || !votaciones.Any())
+    {
+        <div class="empty-state">
+            <p>No tienes votaciones asignadas.</p>
+        </div>
+    }
+    else
+    {
+        var activas = votaciones.Where(v => GetEstadoDinamico(v) == "Activa").ToList();
+        var proximas = votaciones.Where(v => GetEstadoDinamico(v) == "Pendiente").ToList();
+        var finalizadas = votaciones.Where(v => GetEstadoDinamico(v) == "Cerrada").ToList();
+
+        <!-- Fila de Resumen -->
+        <div class="stats-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-bottom: 3rem;">
+            <div class="stat-card-custom" style="border: 1px solid rgba(34, 201, 132, 0.3); border-radius: 8px; padding: 1.5rem; background: var(--bg-card); display: flex; flex-direction: column; align-items: flex-start;">
+                <h3 class="stat-value" style="color: var(--success); font-size: 2.5rem; margin-bottom: 0.5rem; margin-top: 0;">@activas.Count</h3>
+                <p class="stat-title" style="font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin: 0;">VOTACIONES ACTIVAS</p>
+            </div>
+            <div class="stat-card-custom" style="border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; padding: 1.5rem; background: var(--bg-card); display: flex; flex-direction: column; align-items: flex-start;">
+                <h3 class="stat-value" style="color: var(--accent); font-size: 2.5rem; margin-bottom: 0.5rem; margin-top: 0;">@proximas.Count</h3>
+                <p class="stat-title" style="font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin: 0;">PRÓXIMAS VOTACIONES</p>
+            </div>
+            <div class="stat-card-custom" style="border: 1px solid rgba(100, 116, 139, 0.3); border-radius: 8px; padding: 1.5rem; background: var(--bg-card); display: flex; flex-direction: column; align-items: flex-start;">
+                <h3 class="stat-value" style="color: var(--muted); font-size: 2.5rem; margin-bottom: 0.5rem; margin-top: 0;">@finalizadas.Count</h3>
+                <p class="stat-title" style="font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin: 0;">VOTACIONES FINALIZADAS</p>
+            </div>
+        </div>
+
+        <!-- Bloque EN CURSO -->
+        <h2 class="page-subtitle" style="font-size: 1.1rem; color: var(--text); opacity: 0.9; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 1px;">EN CURSO</h2>
+        @if (!activas.Any())
+        {
+            <div class="empty-state" style="margin-bottom: 2rem; padding: 1.5rem;"><p style="font-size: 0.9rem;">No hay votaciones en curso.</p></div>
+        }
+        else
+        {
+            <div style="display: flex; flex-direction: column; gap: 1.5rem; margin-bottom: 3rem;">
+                @foreach (var votacion in activas)
+                {
+                    <div class="card" style="padding: 1.5rem; border: 1px solid rgba(255,255,255,0.05); background: var(--bg-card);">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+                            <div style="display: flex; align-items: center; gap: 1rem;">
+                                <span style="font-size: 0.85rem; color: var(--accent); opacity: 0.9;">📌 Evento: @votacion.EventoNombre</span>
+                                <span style="font-size: 0.85rem; color: var(--muted);">ID: @votacion.CodigoStr</span>
+                                <span style="@GetBadgeStyle("Activa")">EN CURSO</span>
+                            </div>
+                        </div>
+                        <h3 class="card-title" style="font-size: 1.4rem; margin-bottom: 0.5rem;">@votacion.Titulo</h3>
+                        <p style="font-size: 0.9rem; color: var(--muted); margin-bottom: 1.5rem; line-height: 1.5;">@(string.IsNullOrEmpty(votacion.Descripcion) ? "Sin descripción general." : votacion.Descripcion)</p>
+                        
+                        <div style="display: flex; gap: 2rem; font-size: 0.85rem; color: var(--muted); margin-bottom: 1.5rem;">
+                            <span>📅 @votacion.FechaInicio.ToString("dd/MM/yyyy") - @votacion.FechaFin.ToString("dd/MM/yyyy")</span>
+                            <span>👥 @votacion.TotalProyectos proyectos</span>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 1.5rem; flex-wrap: wrap; gap: 1.5rem;">
+                            @{
+                                var width = votacion.TotalProyectos > 0 ? (votacion.ProyectosVotados * 100 / votacion.TotalProyectos) : 0;
+                            }
+                            <div style="flex: 1; min-width: 300px;">
+                                <div style="display: flex; gap: 1rem; align-items: center; font-size: 0.85rem; font-weight: 600; color: var(--text);">
+                                    <span>Progreso: @votacion.ProyectosVotados de @votacion.TotalProyectos votados</span>
+                                    <div style="flex: 1; max-width: 200px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; display: flex; align-items: center;">
+                                        <div style="height: 100%; background: var(--text); width: @width%; transition: width 0.3s ease;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 1rem; align-items: center;">
+                                <button class="btn-cancel" style="background: transparent; border: 1px solid var(--border); color: var(--text); font-weight: 500; border-radius: 6px; padding: 0.6rem 1rem; white-space: nowrap;" @onclick='() => NavigationManager.NavigateTo($"/detalle-evento?id={votacion.EventoId}")'>
+                                    Ir al Evento
+                                </button>
+                                <button class="btn-primary" style="background: var(--text); color: var(--bg); font-weight: bold; border-radius: 6px; padding: 0.6rem 1.5rem;" @onclick='() => NavigationManager.NavigateTo($"/detalle-votacion?eventoId={votacion.EventoId}&votacionId={votacion.Id}&fromDashboard=true")'>
+                                    Continuar Votando
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <!-- Bloque PRÓXIMAS -->
+        <h2 class="page-subtitle" style="font-size: 1.1rem; color: var(--text); opacity: 0.9; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 1px;">PRÓXIMAS</h2>
+        @if (!proximas.Any())
+        {
+            <div class="empty-state" style="margin-bottom: 2rem; padding: 1.5rem;"><p style="font-size: 0.9rem;">No hay votaciones próximas agendadas.</p></div>
+        }
+        else
+        {
+            <div style="display: flex; flex-direction: column; gap: 1.5rem; margin-bottom: 3rem;">
+                @foreach (var votacion in proximas)
+                {
+                    <div class="card" style="padding: 1.5rem; border: 1px solid rgba(255,255,255,0.05); background: var(--bg-card);">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+                            <div style="display: flex; align-items: center; gap: 1rem;">
+                                <span style="font-size: 0.85rem; color: var(--accent); opacity: 0.9;">📌 Evento: @votacion.EventoNombre</span>
+                                <span style="font-size: 0.85rem; color: var(--muted);">ID: @votacion.CodigoStr</span>
+                                <span style="@GetBadgeStyle("Pendiente")">PRÓXIMA</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
+                            <div>
+                                <h3 class="card-title" style="font-size: 1.4rem; margin-bottom: 0.5rem;">@votacion.Titulo</h3>
+                                <p style="font-size: 0.9rem; color: var(--muted); margin-bottom: 1.5rem; line-height: 1.5;">@(string.IsNullOrEmpty(votacion.Descripcion) ? "Sin descripción general." : votacion.Descripcion)</p>
+                                
+                                <div style="display: flex; gap: 2rem; font-size: 0.85rem; color: var(--muted);">
+                                    <span>📅 @votacion.FechaInicio.ToString("dd/MM/yyyy") - @votacion.FechaFin.ToString("dd/MM/yyyy")</span>
+                                    <span>👥 @votacion.TotalProyectos proyectos</span>
+                                    
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 1rem; align-items: center;">
+                                <button class="btn-cancel" style="background: transparent; border: 1px solid var(--border); color: var(--text); font-weight: 500; border-radius: 6px; padding: 0.6rem 1rem; white-space: nowrap;" @onclick='() => NavigationManager.NavigateTo($"/detalle-evento?id={votacion.EventoId}")'>
+                                    Ir al Evento
+                                </button>
+                                <button class="btn-cancel" style="background: transparent; border: 1px solid var(--border); color: var(--text); font-weight: 500; border-radius: 6px; padding: 0.6rem 1.5rem; white-space: nowrap;" @onclick='() => NavigationManager.NavigateTo($"/detalle-votacion?eventoId={votacion.EventoId}&votacionId={votacion.Id}&fromDashboard=true")'>
+                                    Ver Detalles
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <!-- Bloque FINALIZADAS -->
+        <h2 class="page-subtitle" style="font-size: 1.1rem; color: var(--text); opacity: 0.9; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 1px;">FINALIZADAS</h2>
+        @if (!finalizadas.Any())
+        {
+            <div class="empty-state" style="margin-bottom: 2rem; padding: 1.5rem;"><p style="font-size: 0.9rem;">No hay votaciones finalizadas en tu historial.</p></div>
+        }
+        else
+        {
+            <div style="display: flex; flex-direction: column; gap: 1.5rem; margin-bottom: 3rem;">
+                @foreach (var votacion in finalizadas)
+                {
+                    <div class="card" style="padding: 1.5rem; border: 1px solid rgba(255,255,255,0.05); background: var(--bg-card); opacity: 0.8;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
+                            <div>
+                                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+                                    <div style="display: flex; align-items: center; gap: 1rem;">
+                                        <span style="font-size: 0.85rem; color: var(--accent); opacity: 0.9;">📌 Evento: @votacion.EventoNombre</span>
+                                        <span style="font-size: 0.85rem; color: var(--muted);">ID: @votacion.CodigoStr</span>
+                                        <span style="@GetBadgeStyle("Cerrada")">FINALIZADA</span>
+                                    </div>
+                                </div>
+                                <h3 class="card-title" style="font-size: 1.4rem; margin-bottom: 0.5rem;">@votacion.Titulo</h3>
+                                <p style="font-size: 0.9rem; color: var(--muted); margin-bottom: 1.5rem; line-height: 1.5;">@(string.IsNullOrEmpty(votacion.Descripcion) ? "Sin descripción general." : votacion.Descripcion)</p>
+                                
+                                <div style="display: flex; gap: 2rem; font-size: 0.85rem; color: var(--muted);">
+                                    <span>📅 @votacion.FechaInicio.ToString("dd/MM/yyyy") - @votacion.FechaFin.ToString("dd/MM/yyyy")</span>
+                                    <span>👥 @votacion.TotalProyectos proyectos</span>
+                                    @if(votacion.ProyectosVotados == votacion.TotalProyectos && votacion.TotalProyectos > 0)
+                                    {
+                                        <span style="color: var(--success); font-weight: 600;">✓ Completada (@votacion.ProyectosVotados/@votacion.TotalProyectos)</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Completada (@votacion.ProyectosVotados/@votacion.TotalProyectos)</span>
+                                    }
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 1rem; align-items: center;">
+                                <button class="btn-cancel" style="background: transparent; border: 1px solid var(--border); color: var(--text); font-weight: 500; border-radius: 6px; padding: 0.6rem 1rem; white-space: nowrap;" @onclick='() => NavigationManager.NavigateTo($"/detalle-evento?id={votacion.EventoId}")'>
+                                    Ir al Evento
+                                </button>
+                                <button class="btn-cancel" style="background: transparent; border: 1px solid var(--border); color: var(--text); font-weight: 500; border-radius: 6px; padding: 0.6rem 1.5rem; white-space: nowrap;" @onclick='() => NavigationManager.NavigateTo($"/detalle-votacion?eventoId={votacion.EventoId}&votacionId={votacion.Id}&fromDashboard=true")'>
+                                    Ver Resultados
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+</main>
+
+@code {
+    private List<Shared.DTO.JuradoVotacionResumenDto>? votaciones;
+    private bool isLoading = true;
+    private int currentUserId = 0;
+
+    private string GetEstadoDinamico(Shared.DTO.JuradoVotacionResumenDto v)
+    {
+        var now = DateTime.UtcNow;
+        if (v.Estado == "Cerrada" || now > v.FechaFin) return "Cerrada";
+        if (v.Estado == "Activa" || (now >= v.FechaInicio && now <= v.FechaFin)) return "Activa";
+        return "Pendiente";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var userJson = await AuthService.GetUsuarioActivoAsync();
+            if (!string.IsNullOrEmpty(userJson))
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(userJson);
+                if (doc.RootElement.TryGetProperty("id", out var idProp) || doc.RootElement.TryGetProperty("Id", out idProp))
+                {
+                    currentUserId = idProp.GetInt32();
+                }
+            }
+
+            if (currentUserId > 0)
+            {
+                votaciones = await Http.GetFromJsonAsync<List<Shared.DTO.JuradoVotacionResumenDto>>($"api/Votacion/mis-votaciones?userId={currentUserId}");
+                if (votaciones != null)
+                {
+                    foreach (var v in votaciones)
+                    {
+                        v.FechaInicio = v.FechaInicio.ToLocalTime();
+                        v.FechaFin = v.FechaFin.ToLocalTime();
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching votaciones: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetBadgeStyle(string estado)
+    {
+        return estado switch
+        {
+            "Activa" => "background: rgba(34, 201, 132, 0.15); color: var(--success); border: 1px solid rgba(34, 201, 132, 0.3); padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.70rem; font-weight: 600;",
+            "Pendiente" => "background: rgba(99, 102, 241, 0.15); color: var(--accent); border: 1px solid rgba(99, 102, 241, 0.3); padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.70rem; font-weight: 600;",
+            _ => "background: rgba(100, 116, 139, 0.15); color: var(--muted); border: 1px solid rgba(100, 116, 139, 0.3); padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.70rem; font-weight: 600;"
+        };
+    }
+}

@@ -1,0 +1,452 @@
+/* /Users/marcos/Desktop/Local/Repo Votify Ok/Votify-Push-Pray-M12.01/Web/Pages/DetalleVotacion.razor.css */
+
+.delete-alert {
+    margin-bottom: 2rem; 
+    background: rgba(255,79,110,.08); 
+    border: 1px solid rgba(255,79,110,.25); 
+    color: #ff4f4f; 
+    padding: .75rem 1rem; 
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.vote-trigger-container {
+    text-align: center; 
+    margin-bottom: 3rem;
+}
+
+.btn-emitir {
+    padding: 1rem 2.5rem; 
+    font-size: 1.1rem;
+}
+
+.header-top {
+    display: flex; 
+    justify-content: space-between; 
+    align-items: flex-start; 
+    margin-bottom: 3rem;
+}
+
+.meta-info {
+    color: var(--muted); 
+    font-size: .9rem; 
+    display: flex; 
+    gap: 1.5rem;
+}
+
+.live-card .status {
+    color: var(--success); 
+    font-weight: 700; 
+    font-size: .85rem; 
+    display: flex; 
+    align-items: center; 
+    gap: .5rem; 
+    margin-bottom: 1rem;
+}
+
+.live-card .label {
+    color: var(--muted); 
+    font-size: .75rem; 
+    text-transform: uppercase; 
+    letter-spacing: 1px;
+}
+
+.live-card .time {
+    font-family: 'Syne', sans-serif; 
+    font-size: 2.5rem; 
+    font-weight: 700; 
+    color: #facc15; 
+    margin: .5rem 0;
+}
+
+.live-card .close-text {
+    color: var(--muted); 
+    font-size: .85rem; 
+    margin-bottom: 1rem;
+}
+
+.live-actions {
+    display: flex; 
+    gap: .5rem;
+}
+
+.btn-live-action {
+    flex: 1; 
+    padding: .6rem; 
+    border: none; 
+    border-radius: 6px; 
+    font-size: .85rem; 
+    font-weight: 600; 
+    cursor: pointer; 
+    color: #fff;
+    transition: opacity 0.2s;
+}
+
+.btn-live-action:hover {
+    opacity: 0.9;
+}
+
+.btn-live-action.extender {
+    background: rgba(176,141,75,.8); 
+    border: 1px solid #b08d4b;
+}
+
+.btn-live-action.cerrar {
+    background: rgba(139,58,58,.8); 
+    border: 1px solid #8b3a3a;
+}
+
+.stats-grid {
+    display: grid; 
+    grid-template-columns: repeat(4, 1fr); 
+    gap: 1.25rem; 
+    margin-bottom: 3rem;
+}
+
+.stat-card-custom {
+    background: var(--surface); 
+    border: 1px solid var(--border); 
+    border-radius: 12px; 
+    padding: 1.5rem;
+}
+
+.stat-card-custom.yellow-border {
+    border-top: 3px solid #facc15;
+}
+
+.stat-card-custom.purple-border {
+    border-top: 3px solid var(--accent2);
+}
+
+.stat-title {
+    color: var(--muted); 
+    font-size: .75rem; 
+    text-transform: uppercase; 
+    letter-spacing: 1px; 
+    margin-bottom: .5rem;
+}
+
+.stat-value {
+    font-family: 'Syne', sans-serif; 
+    font-size: 2rem; 
+    font-weight: 700;
+}
+
+.stat-value-fraction {
+    font-size: 1rem; 
+    color: var(--muted); 
+    font-weight: 400;
+}
+
+.stat-desc {
+    color: var(--muted); 
+    font-size: .85rem; 
+    margin-top: .5rem;
+}
+
+.content-grid {
+    display: grid; 
+    grid-template-columns: 1fr 1fr; 
+    gap: 2rem; 
+    margin-bottom: 3rem;
+}
+
+.section-panel {
+    background: var(--surface); 
+    border: 1px solid var(--border); 
+    border-radius: 12px;
+}
+
+.panel-header {
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    padding: 1.5rem; 
+    border-bottom: 1px solid var(--border);
+}
+
+.panel-title {
+    font-family: 'Syne', sans-serif; 
+    font-size: 1.2rem; 
+    font-weight: 700;
+}
+
+.panel-badge {
+    background: var(--surface2); 
+    color: var(--muted); 
+    padding: .2rem .6rem; 
+    border-radius: 999px; 
+    font-size: .75rem;
+}
+
+.panel-badge.real-time {
+    color: #facc15; 
+    background: rgba(250,204,21,.1); 
+    border: 1px solid rgba(250,204,21,.3);
+}
+
+.list-wrapper {
+    padding: 1.5rem;
+    max-height: 500px; 
+    overflow-y: auto; 
+    display: block;
+}
+
+.res-item {
+    background: var(--bg); 
+    border: 1px solid var(--border); 
+    border-radius: 8px; 
+    padding: 1rem; 
+    display: flex; 
+    align-items: center; 
+    gap: 1rem; 
+    position: relative; 
+    overflow: hidden;
+    margin-bottom: 1rem;
+}
+
+.res-item:last-child {
+    margin-bottom: 0;
+}
+
+.res-pos {
+    font-family: 'Syne', sans-serif; 
+    font-weight: 700; 
+    font-size: 1.2rem; 
+    min-width: 30px; 
+    text-align: center;
+}
+
+.res-info {
+    flex: 1; 
+    z-index: 1;
+}
+
+.res-title {
+    font-size: 1rem; 
+    margin-bottom: .25rem;
+}
+
+.res-desc {
+    color: var(--muted); 
+    font-size: .85rem;
+}
+
+.res-votes {
+    text-align: right; 
+    z-index: 1;
+}
+
+.res-votes-val {
+    display: block; 
+    font-size: 1.2rem; 
+    font-family: 'Syne', sans-serif;
+}
+
+.res-votes-count {
+    font-size: .75rem; 
+    color: var(--muted);
+}
+
+.res-bar-container {
+    position: absolute; 
+    bottom: 0; 
+    left: 0; 
+    height: 3px; 
+    background: var(--border); 
+    width: 100%; 
+    z-index: 0;
+}
+
+.res-bar-fill {
+    height: 100%; 
+}
+
+.comment-item {
+    background: var(--bg); 
+    border: 1px solid var(--border); 
+    border-radius: 8px; 
+    padding: 1rem;
+}
+
+.comment-top {
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    margin-bottom: .75rem;
+}
+
+.comment-user-box {
+    display: flex; 
+    align-items: center; 
+    gap: .5rem; 
+    font-size: .9rem; 
+    font-weight: 600;
+}
+
+.comment-avatar {
+    width: 28px; 
+    height: 28px; 
+    background: var(--surface2); 
+    border-radius: 50%; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    font-size: .7rem; 
+    color: var(--accent); 
+    font-weight: 700;
+}
+
+.comment-time {
+    color: var(--muted); 
+    font-size: .8rem;
+}
+
+.comment-tag {
+    background: rgba(124,79,255,.15); 
+    color: var(--accent2); 
+    padding: .2rem .6rem; 
+    border-radius: 999px; 
+    font-size: .75rem; 
+    display: inline-block; 
+    margin-bottom: .75rem; 
+    border: 1px solid rgba(124,79,255,.3);
+}
+
+.comment-text {
+    color: var(--text); 
+    font-size: .9rem; 
+    line-height: 1.5;
+}
+
+.jurados-panel {
+    margin-top: 2rem;
+}
+
+.jurados-toolbar {
+    display: grid; 
+    grid-template-columns: 1fr auto auto; 
+    gap: .6rem; 
+    padding: 1.2rem 1.5rem 0;
+}
+
+.jurados-input {
+    background: var(--bg); 
+    border: 1px solid var(--border); 
+    border-radius: 8px; 
+    color: var(--text); 
+    padding: .62rem .8rem;
+}
+
+.jurados-btn {
+    background: var(--surface2); 
+    color: var(--text); 
+    border: 1px solid var(--border); 
+    border-radius: 8px; 
+    padding: .6rem .9rem; 
+    cursor: pointer;
+}
+
+.jurados-grid {
+    display: grid; 
+    grid-template-columns: 1fr 1fr; 
+    gap: 1rem; 
+    padding: 1rem 1.5rem 1.4rem;
+}
+
+.jurados-col {
+    background: var(--bg); 
+    border: 1px solid var(--border); 
+    border-radius: 10px; 
+    min-height: 200px;
+}
+
+.jurados-col h4 {
+    font-family: 'Syne'; 
+    font-size: .92rem; 
+    padding: .8rem .9rem; 
+    border-bottom: 1px solid var(--border);
+}
+
+.jurados-list {
+    padding: .45rem; 
+    display: flex; 
+    flex-direction: column; 
+    gap: .35rem;
+}
+
+.jurados-list-sel {
+    padding: .45rem;
+}
+
+.jurado-item {
+    display: grid; 
+    grid-template-columns: auto 1fr; 
+    gap: .55rem; 
+    align-items: center; 
+    padding: .5rem; 
+    border-radius: 8px; 
+    cursor: pointer;
+}
+
+.jurado-tag {
+    display: inline-flex; 
+    align-items: center; 
+    gap: .45rem; 
+    background: var(--surface2); 
+    border: 1px solid var(--border); 
+    border-radius: 999px; 
+    padding: .35rem .65rem; 
+    font-size: .8rem; 
+    margin: .2rem;
+}
+
+.jurado-tag button {
+    background: transparent; 
+    border: none; 
+    color: var(--muted); 
+    cursor: pointer;
+}
+
+.toast-success {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    background: #22c984;
+	padding: 1rem 2rem;
+    border-radius: 8px;
+	box-shadow: 0 4px 12px rgba(34,201,132,0.3);
+    font-weight: 700;
+	z-index: 1000;
+    animation: slideInUp 0.3s ease-out;
+}
+@keyframes slideInUp {
+    from {
+        transform: translateY(100%);
+        opacity: 0;
+    }to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@media (max-width: 900px) {
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    .content-grid {
+        grid-template-columns: 1fr;
+    }
+    .jurados-grid {
+        grid-template-columns: 1fr;
+    }
+    .header-top {
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+    .jurados-toolbar {
+        grid-template-columns: 1fr;
+    }
+}

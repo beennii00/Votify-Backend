@@ -1,0 +1,108 @@
+﻿2.4 Patrón estado:
+¿En qué consiste? 
+El patrón Estado tienen como intención permitir a un objeto cambiar su conducta cuando cambie su estado interno, de forma que el objeto parezca cambiar de clase. Se aplica cuando el comportamiento de un objeto depende de su estado y debe cambiar en tiempo de ejecución, y especialmente cuando varias operaciones de una clase obtienen grandes sentencias condicionales que dependen de dicho estado. Su estructura se articula en tres participantes:
+* Contexto: Define la interfaz para los clientes y mantiene una instancia de EstadoConcreto que representa el estado actual.
+* Estado: Define una interfaz para encapsular la conducta asociada con un estado particular del Contexto.
+* EstadoConcreto: Cada subclase implementa la conducta asociada con un estado concreto del Contexto. Es quien decide las transiciones válidas, lanzando un error si se intenta una no permitida.
+* De esta forma, en lugar de tener enormes sentencias que comprueben el estado en cada operación, cada rama queda encapsulada es su propia clase de estado.
+
+
+Problemática actual a resolver: 
+En Votify, la clase de votación tiene cuatro estados posibles: Pendiente, Activa, Pausada y Cerrada. Actualmente, toda la lógica de cambio de Estado está centralizada en VotacionService, dentro del método AccionVotaciónAsync, o mediante un switch sobre una cadena de texto: 
+
+
+switch (accion.ToLower())
+{
+   case "iniciar":  votacion.Estado = EstadoVotacion.Activa;   break;
+   case "cerrar":   votacion.Estado = EstadoVotacion.Cerrada;  break;
+   case "detener":  votacion.Estado = EstadoVotacion.Pausada;  break;
+   case "reanudar": votacion.Estado = EstadoVotacion.Activa;   break;
+   case "extender": votacion.FechaFin = votacion.FechaFin.AddHours(2); break;
+   default: throw new ArgumentException("Acción no válida.");
+}
+	
+
+Este enfoque presenta dos problemas:
+* No se validan las transiciones: Nada impide ejecutar reanudar sobre una votación Pendiente, o iniciar una ya Cerrada. El sistema acepta transiciones de Estado incoherentes sin ningún control.
+* Fragilidad ante la extensión: Si se añade un nuevo estado (por ejemplo Cancelada), hay que modificar este switch, el enum, y cualquier otro bloque condicional repartido por el código.
+
+
+Aplicación a Votify:
+Aplicando el patrón, Votación pasa a ser el Contexto, IEstadoVotación la interfaz estado coma y cada estado concreto implementa únicamente las transiciones válidas desde él. La interfaz define las cuatro operaciones posibles sobre una votación:
+
+
+// Estado -- interfaz común para todos los estados de Votacion
+public interface IEstadoVotacion
+{
+   void Iniciar(Votacion contexto);
+   void Pausar(Votacion contexto);
+   void Reanudar(Votacion contexto);
+   void Cerrar(Votacion contexto);
+}
+	
+
+A modo de ejemplo, dos de los cuatro estados concretos (los otros dos, EstadoPausa y EstadoCerrada, siguen el mismo esquema):
+
+
+// EstadoPendiente: solo puede iniciarse
+public class EstadoPendiente : IEstadoVotacion
+{
+   public void Iniciar(Votacion ctx)
+   {
+       ctx.FechaInicio = DateTime.UtcNow;
+       ctx.SetEstado(new EstadoActiva());
+   }
+   public void Pausar(Votacion ctx)   => throw new InvalidOperationException("No se puede pausar una votación pendiente.");
+   public void Reanudar(Votacion ctx) => throw new InvalidOperationException("No se puede reanudar una votación pendiente.");
+   public void Cerrar(Votacion ctx)   => throw new InvalidOperationException("No se puede cerrar una votación pendiente.");
+}
+
+// EstadoActiva: puede pausarse o cerrarse
+public class EstadoActiva : IEstadoVotacion
+{
+   public void Iniciar(Votacion ctx)  => throw new InvalidOperationException("La votación ya está activa.");
+   public void Pausar(Votacion ctx)   => ctx.SetEstado(new EstadoPausada());
+   public void Reanudar(Votacion ctx) => throw new InvalidOperationException("La votación ya está activa.");
+   public void Cerrar(Votacion ctx)   { ctx.FechaFin = DateTime.UtcNow; ctx.SetEstado(new EstadoCerrada()); }
+}
+	
+
+
+
+
+
+Votación como Contexto delega todas las peticiones en el estado actual:
+
+
+public class Votacion
+{
+   private IEstadoVotacion _estado = new EstadoPendiente();
+   internal void SetEstado(IEstadoVotacion s) => _estado = s;
+
+   public void Iniciar()  => _estado.Iniciar(this);
+   public void Pausar()   => _estado.Pausar(this);
+   public void Reanudar() => _estado.Reanudar(this);
+   public void Cerrar()   => _estado.Cerrar(this);
+}
+	
+
+El resultado en VotacionService es que deja de asignar estado directamente y delega en el objeto, que ya valida internamente si la transición es válida:
+
+
+// AccionVotacionAsync -- antes: votacion.Estado = EstadoVotacion.X
+// Ahora: el propio objeto Votacion gestiona y valida el cambio
+switch (accion.ToLower())
+{
+   case "iniciar":  votacion.Iniciar();  break;
+   case "cerrar":   votacion.Cerrar();   break;
+   case "detener":  votacion.Pausar();   break;
+   case "reanudar": votacion.Reanudar(); break;
+   default: throw new ArgumentException("Acción no válida.");
+}
+	
+
+Beneficios Reales de su aplicación:
+* Eliminación de sentencias condicionales complejas: La lógica de cada estado queda encapsulada en su propia clase, evitando el switch actual en VotacionService que no controla la coherencia de las transiciones. 
+* Transiciones inválidas controladas automáticamente: Intentar pausar una votación ya cerrada, o reanudar una pendiente, lanza una excepción directamente desde el estado concreto, sin necesidad de validaciones externas adicionales. 
+* Máquina de estados más clara y explícita: La tabla de transiciones válidas queda autoexplicada por el código de cada clase de estado, haciendo la implementación más legible y menos propensa a estados inconsistentes. 
+* Conducta del objeto varía en tiempo de ejecución: Votación se comporta de forma completamente distinta dependiendo de si está pendiente, activa, pausada o cerrada, sin que el cliente (VotacionService) necesite conocer ni gestionar esa lógica.

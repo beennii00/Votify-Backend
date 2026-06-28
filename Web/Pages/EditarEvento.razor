@@ -1,0 +1,409 @@
+@page "/editar-evento"
+@using Shared.DTO
+@using System.Text.Json
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+@inject Web.Services.SimpleAuthService AuthService
+
+<!-- Breadcrumb -->
+<div class="breadcrumb" style="display:flex; align-items:center; gap:.5rem; font-size:.8rem; color:var(--muted); margin-bottom:2rem;">
+    <a href="/listado-eventos" style="color:var(--muted); text-decoration:none;">Eventos</a>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width:12px; height:12px; opacity:.5;">
+        <polyline points="9 18 15 12 9 6"/>
+    </svg>
+    <span style="color:var(--text);">@(string.IsNullOrEmpty(model.Nombre) ? "Editar Evento" : model.Nombre)</span>
+</div>
+
+<div class="page-header">
+    <h1 class="page-title">Editar <span>Evento</span></h1>
+    <p class="page-subtitle">Modifica los campos y guarda los cambios del evento.</p>
+</div>
+
+<div class="form-card" style="position:relative;">
+    
+    @if (isPageLoading)
+    {
+        <!-- Skeleton de carga -->
+        <div style="position: absolute; inset: 0; z-index: 5; background: var(--surface); border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem;">
+            <div style="width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite;"></div>
+            <span style="font-size: .85rem; color: var(--muted);">Cargando datos del evento</span>
+        </div>
+        <style>@("@keyframes spin { to { transform: rotate(360deg); } }")</style>
+    }
+    else if (!string.IsNullOrEmpty(pageLoadError))
+    {
+        <!-- Error de carga -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 3rem 2rem; text-align: center;">
+            <div style="width: 52px; height: 52px; border-radius: 14px; background: rgba(255,79,110,.1); border: 1px solid rgba(255,79,110,.25); display: flex; align-items: center; justify-content: center; color: var(--danger);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:24px; height:24px;">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+            </div>
+            <h3 style="font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem;">No se pudo cargar el evento</h3>
+            <p style="color: var(--muted); font-size: .875rem;">@pageLoadError</p>
+            <a href="/listado-eventos" style="color: var(--accent); font-size: .875rem; text-decoration: none; display: flex; align-items: center; gap: .35rem;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14">
+                    <polyline points="15 18 9 12 15 6"/>
+                </svg>
+                Volver al listado
+            </a>
+        </div>
+    }
+    else
+    {
+        <EditForm Model="model" OnValidSubmit="GuardarCambios">
+            <DataAnnotationsValidator />
+
+            <!-- Información general -->
+            <div class="section-label">Información general</div>
+
+            <div class="form-group">
+                <label for="tipoEvento">Tipo de Evento <span class="required" style="color:var(--accent);">*</span></label>
+                <!-- Disabled in edit mode so they can't mutate the DNA of the event -->
+                <InputSelect disabled="true" id="tipoEvento" class="form-control" @bind-Value="model.TipoEvento" style="opacity: 0.6; cursor: not-allowed;">
+                    <option value="Estandar">Estándar</option>
+                    <option value="Esports">E-Sports</option>
+                </InputSelect>
+            </div>
+
+            <div class="form-group">
+                <label for="nombre">Nombre <span class="required" style="color:var(--accent);">*</span></label>
+                <InputText id="nombre" class="form-control" placeholder="Ej: Hackathon Innovación 2025" @bind-Value="model.Nombre" />
+                <ValidationMessage For="@(() => model.Nombre)" />
+            </div>
+
+            <div class="form-group">
+                <label for="descripcion">
+                    Descripción
+                    <span class="hint" style="font-size:.72rem; opacity:.6; margin-left:.4rem; text-transform:none;">(opcional)</span>
+                </label>
+                <InputTextArea id="descripcion" class="form-control" placeholder="Describe el evento y su alcance..." @bind-Value="model.Descripcion" style="min-height: 110px;" />
+            </div>
+
+            <div class="form-divider" style="height:1px; background:var(--border); margin:2rem 0;"></div>
+
+            <!-- Fechas -->
+            <div class="section-label">Duración</div>
+
+            <div class="form-row" style="display:grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
+                <div class="form-group">
+                    <label for="fechaInicio">Fecha de inicio <span class="required" style="color:var(--accent);">*</span></label>
+                    <InputDate id="fechaInicio" class="form-control" @bind-Value="model.FechaInicioObj" @bind-Value:after="OnFechaInicioChanged" />
+                </div>
+                <div class="form-group">
+                    <label for="fechaFin">Fecha de fin <span class="required" style="color:var(--accent);">*</span></label>
+                    <InputDate id="fechaFin" class="form-control" @bind-Value="model.FechaFinObj" min="@model.FechaInicioObj.ToString("yyyy-MM-dd")" />
+                </div>
+            </div>
+            @if (model.FechaFinObj < model.FechaInicioObj)
+            {
+                <div style="color:var(--danger); font-size:.78rem; margin-top:-.5rem; margin-bottom:.5rem;">
+                    ⚠️ La fecha de fin no puede ser anterior a la fecha de inicio.
+                </div>
+            }
+
+            <div class="form-row" style="display:grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
+                <div class="form-group">
+                    <label for="horaInicio">Hora de inicio <span class="required" style="color:var(--accent);">*</span></label>
+                    <input type="time" id="horaInicio" class="form-control" @bind="model.HoraInicioSpan" @bind:format="HH:mm" />
+                </div>
+                <div class="form-group">
+                    <label for="horaFin">Hora de fin <span class="required" style="color:var(--accent);">*</span></label>
+                    <input type="time" id="horaFin" class="form-control" @bind="model.HoraFinSpan" @bind:format="HH:mm" />
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorFechas))
+            {
+                <div class="field-error" style="color:var(--danger); margin-top:.5rem; font-size:.78rem;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width:13px; height:13px; margin-right:4px; vertical-align:middle;">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="12"/>
+                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    @errorFechas
+                </div>
+            }
+
+            <!-- Campos de ESports -->
+            @if (model.TipoEvento == "Esports")
+            {
+                <div id="esportsFields" style="margin-top: 2rem;">
+                    <div class="section-label">Detalles de E-Sports</div>
+                    <div class="form-row" style="display:grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
+                        <div class="form-group">
+                            <label for="juego">Juego</label>
+                            <InputText id="juego" class="form-control" placeholder="Ej: League of Legends" @bind-Value="model.Juego" />
+                        </div>
+                        <div class="form-group">
+                            <label for="plataforma">Plataforma</label>
+                            <InputText id="plataforma" class="form-control" placeholder="Ej: PC" @bind-Value="model.Plataforma" />
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <p id="errorMsg" style="color:var(--danger); margin-top:1rem;">@errorMessage</p>
+            }
+
+            <!-- Actions -->
+            <div class="form-actions" style="display:flex; justify-content:flex-end; align-items:center; gap:.85rem; margin-top:2rem; padding-top:1.75rem; border-top:1px solid var(--border);">
+                <button type="button" @onclick="Volver" class="btn-cancel" style="background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:10px; padding:.72rem 1.35rem; text-decoration:none; font-weight:600; cursor:pointer;">Cancelar</button>
+                <button type="submit" class="btn-save btn-primary" disabled="@isSaving">
+                    @(isSaving ? "Guardando..." : "Guardar cambios")
+                </button>
+            </div>
+        </EditForm>
+    }
+</div>
+
+@if (showToast)
+{
+    <div class="toast show success" id="toast" style="position:fixed; bottom:2rem; right:2rem; display:flex; align-items:center; gap:.7rem; background:var(--surface2); border:1px solid var(--border); border-left:3px solid var(--success); border-radius:10px; padding:.85rem 1.2rem; display:flex;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width:18px;height:18px;color:var(--success);">
+            <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        <span>@toastMessage</span>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "id")]
+    public int Id { get; set; }
+
+    [SupplyParameterFromQuery(Name = "fromDetail")]
+    public bool FromDetail { get; set; }
+
+    private EventFormViewModel model = new();
+    
+    private bool isPageLoading = true;
+    private string pageLoadError = "";
+    
+    private bool isSaving;
+    private string errorMessage = "";
+    private string errorFechas = "";
+    
+    private bool showToast;
+    private string toastMessage = "";
+
+    private void OnFechaInicioChanged()
+    {
+        if (model.FechaFinObj < model.FechaInicioObj)
+            model.FechaFinObj = model.FechaInicioObj.AddDays(1);
+    }
+
+    private void Volver()
+    {
+        if (FromDetail)
+        {
+            NavigationManager.NavigateTo($"/detalle-evento?id={Id}");
+        }
+        else
+        {
+            NavigationManager.NavigateTo("/listado-eventos");
+        }
+    }
+
+    public class EventFormViewModel
+    {
+        public string TipoEvento { get; set; } = "Estandar";
+        
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "El nombre es obligatorio")]
+        public string Nombre { get; set; } = "";
+        
+        public string? Descripcion { get; set; }
+        
+        public DateTime FechaInicioObj { get; set; } = DateTime.Today;
+        public DateTime FechaFinObj { get; set; } = DateTime.Today;
+        
+        public TimeOnly HoraInicioSpan { get; set; } = new TimeOnly(9, 0);
+        public TimeOnly HoraFinSpan { get; set; } = new TimeOnly(17, 0);
+        
+        public string? Juego { get; set; }
+        public string? Plataforma { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 1. Verificación de seguridad de roles
+        var userJson = await AuthService.GetUsuarioActivoAsync();
+        if (string.IsNullOrEmpty(userJson))
+        {
+            NavigationManager.NavigateTo("/login");
+            return;
+        }
+
+        var usuarioActual = JsonSerializer.Deserialize<UsuarioResponseDTO>(userJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        var esAdmin = usuarioActual?.Rol == "Administrador" || usuarioActual?.Rol == "Supervisor";
+        if (!esAdmin)
+        {
+            NavigationManager.NavigateTo("/listado-eventos");
+            return;
+        }
+
+        // 2. Cargar evento
+        await CargarEvento();
+    }
+
+    private async Task CargarEvento()
+    {
+        if (Id <= 0)
+        {
+            pageLoadError = "No se ha indicado ningún ID de evento en la URL.";
+            isPageLoading = false;
+            return;
+        }
+
+        try
+        {
+            var res = await Http.GetAsync($"api/evento/{Id}");
+            if (res.IsSuccessStatusCode)
+            {
+                var ev = await res.Content.ReadFromJsonAsync<EventoDTO>();
+                
+                if (ev != null)
+                {
+                    model.Nombre = ev.Nombre;
+                    model.Descripcion = ev.Descripcion;
+                    
+                    model.FechaInicioObj = ev.FechaInicio.ToLocalTime().Date;
+                    model.HoraInicioSpan = TimeOnly.FromDateTime(ev.FechaInicio.ToLocalTime());
+                    
+                    model.FechaFinObj = ev.FechaFin.ToLocalTime().Date;
+                    model.HoraFinSpan = TimeOnly.FromDateTime(ev.FechaFin.ToLocalTime());
+
+                    if (ev is ESportsEventoDto esportsEv)
+                    {
+                        model.TipoEvento = "Esports";
+                        model.Juego = esportsEv.Juego;
+                        model.Plataforma = esportsEv.Plataforma;
+                    }
+                    else
+                    {
+                        model.TipoEvento = "Estandar";
+                    }
+                }
+            }
+            else if (res.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                pageLoadError = $"No existe ningún evento con ID {Id}.";
+            }
+            else
+            {
+                pageLoadError = $"Error del servidor (HTTP {(int)res.StatusCode}).";
+            }
+        }
+        catch (Exception)
+        {
+            pageLoadError = $"No se pudo conectar con el servidor para cargar el evento.";
+        }
+        finally
+        {
+            isPageLoading = false;
+        }
+    }
+
+    private async Task GuardarCambios()
+    {
+        errorFechas = "";
+        errorMessage = "";
+        
+        var dtInicio = model.FechaInicioObj.Date + model.HoraInicioSpan.ToTimeSpan();
+        var dtFin = model.FechaFinObj.Date + model.HoraFinSpan.ToTimeSpan();
+
+        if (dtFin <= dtInicio)
+        {
+            errorFechas = "La fecha de fin debe ser posterior a la fecha (y hora) de inicio.";
+            return;
+        }
+
+        isSaving = true;
+
+        try
+        {
+            EventoDTO dto;
+            if (model.TipoEvento == "Esports")
+            {
+                dto = new ESportsEventoDto
+                {
+                    Id = Id,
+                    Juego = string.IsNullOrWhiteSpace(model.Juego) ? "" : model.Juego,
+                    Plataforma = string.IsNullOrWhiteSpace(model.Plataforma) ? "" : model.Plataforma,
+                    Nombre = model.Nombre,
+                    Descripcion = string.IsNullOrWhiteSpace(model.Descripcion) ? null : model.Descripcion,
+                    FechaInicio = dtInicio.ToUniversalTime(),
+                    FechaFin = dtFin.ToUniversalTime()
+                };
+            }
+            else
+            {
+                dto = new EstandarEventoDto
+                {
+                    Id = Id,
+                    Nombre = model.Nombre,
+                    Descripcion = string.IsNullOrWhiteSpace(model.Descripcion) ? null : model.Descripcion,
+                    FechaInicio = dtInicio.ToUniversalTime(),
+                    FechaFin = dtFin.ToUniversalTime()
+                };
+            }
+
+            var res = await Http.PutAsJsonAsync($"api/evento/{Id}", dto);
+            if (res.IsSuccessStatusCode)
+            {
+                ShowToast($"Evento '{model.Nombre}' actualizado correctamente");
+                await Task.Delay(1400);
+                Volver();
+            }
+            else
+            {
+                var text = await res.Content.ReadAsStringAsync();
+                try
+                {
+                    var errorObj = JsonSerializer.Deserialize<JsonElement>(text);
+                    if (errorObj.TryGetProperty("error", out var msgElement))
+                    {
+                        errorMessage = msgElement.GetString() ?? "Error al actualizar";
+                    }
+                    else if (errorObj.TryGetProperty("message", out var fallbackMsg))
+                    {
+                        errorMessage = fallbackMsg.GetString() ?? "Error al actualizar";
+                    }
+                    else
+                    {
+                        errorMessage = "No se pudo actualizar el evento. Inténtalo de nuevo.";
+                    }
+                }
+                catch
+                {
+                    errorMessage = "No se pudo actualizar el evento. Inténtalo de nuevo.";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Error de conexión: " + ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ShowToast(string message)
+    {
+        toastMessage = message;
+        showToast = true;
+        StateHasChanged();
+        
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(3000);
+            showToast = false;
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+}

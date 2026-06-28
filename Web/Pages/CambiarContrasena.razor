@@ -1,0 +1,373 @@
+@page "/cambiar-contrasena"
+@layout Web.Layout.AuthLayout
+@using Shared.DTO
+@using Web.Services
+@using System.Text.Json
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+@inject SimpleAuthService AuthService
+
+<PageTitle>Cambiar Contraseña - Votify</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">🔑 Recuperar <span>Contraseña</span></h1>
+        <p class="page-subtitle">Introduce tu DNI y establece una nueva contraseña</p>
+    </div>
+</div>
+
+@if (showToast)
+{
+    <div class="toast show @(isSuccessToast ? "success" : "error")" id="toast-cambio-pwd">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            @if (isSuccessToast)
+            {
+                <polyline points="20 6 9 17 4 12" />
+            }
+            else
+            {
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+            }
+        </svg>
+        <span>@toastMessage</span>
+    </div>
+}
+
+<div class="form-card pwd-card">
+
+    <div style="display:flex; align-items:center; gap:.5rem; font-size:.8rem; color:var(--muted); margin-bottom:1.75rem;">
+        <a href="/login" style="color:var(--muted); text-decoration:none;">Iniciar sesión</a>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width:12px;height:12px;opacity:.5;">
+            <polyline points="9 18 15 12 9 6"/>
+        </svg>
+        <span style="color:var(--text);">Cambiar Contraseña</span>
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorGlobal))
+    {
+        <div id="error-banner" class="pwd-alert pwd-alert-error" role="alert">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            @errorGlobal
+        </div>
+    }
+
+    <EditForm EditContext="editContext" OnValidSubmit="Guardar">
+        <DataAnnotationsValidator />
+
+        @* ── DNI ── *@
+        <div class="form-group">
+            <label for="pwd-dni">
+                Documento de Identidad <span style="color:var(--accent);">*</span>
+            </label>
+            <div style="display: flex; gap: 0.5rem;">
+                <InputSelect @bind-Value="model.TipoDocumento" @bind-Value:after="() => editContext?.NotifyFieldChanged(new FieldIdentifier(model, nameof(model.Dni)))" class="form-control" style="width: 115px; flex-shrink: 0; padding: 0.8rem 0.5rem; text-align: center;">
+                    <option value="DNI">DNI</option>
+                    <option value="NIE">NIE</option>
+                    <option value="Pasaporte">Pasap.</option>
+                </InputSelect>
+                <InputText id="pwd-dni"
+                           class="form-control"
+                           placeholder="Ej: 12345678A"
+                           @bind-Value="model.Dni" />
+            </div>
+            <ValidationMessage For="@(() => model.Dni)" class="field-error-inline" />
+        </div>
+
+        @* ── Nueva contraseña ── *@
+        <div class="form-group" style="margin-top:1.25rem;">
+            <label for="pwd-nueva">
+                Nueva contraseña <span style="color:var(--accent);">*</span>
+            </label>
+            <div class="pwd-input-wrapper">
+                <InputText id="pwd-nueva"
+                           type="@(showNueva ? "text" : "password")"
+                           class="form-control"
+                           placeholder="••••••••"
+                           @bind-Value="model.NuevaContrasenya" />
+                <button type="button" class="pwd-eye" @onclick="() => showNueva = !showNueva" tabindex="-1" title="Mostrar/ocultar contraseña">
+                    @if (showNueva)
+                    {
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                    }
+                    else
+                    {
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    }
+                </button>
+            </div>
+
+            @* Indicador en tiempo real: solo 6 chars *@
+            @if (!string.IsNullOrEmpty(model.NuevaContrasenya))
+            {
+                <div class="pwd-requirements" role="status" aria-live="polite">
+                    <div class="req-item @(req6Chars ? "req-ok" : "req-fail")">
+                        @if (req6Chars) { <span class="req-icon">✓</span> } else { <span class="req-icon">✗</span> }
+                        Mínimo 6 caracteres
+                    </div>
+                </div>
+            }
+
+            <ValidationMessage For="@(() => model.NuevaContrasenya)" class="field-error-inline" />
+        </div>
+
+        @* ── Confirmar contraseña ── *@
+        <div class="form-group" style="margin-top:1.25rem;">
+            <label for="pwd-confirmar">
+                Confirmar nueva contraseña <span style="color:var(--accent);">*</span>
+            </label>
+            <div class="pwd-input-wrapper">
+                <InputText id="pwd-confirmar"
+                           type="@(showConfirmar ? "text" : "password")"
+                           class="form-control"
+                           placeholder="••••••••"
+                           @bind-Value="model.ConfirmarContrasenya" />
+                <button type="button" class="pwd-eye" @onclick="() => showConfirmar = !showConfirmar" tabindex="-1" title="Mostrar/ocultar contraseña">
+                    @if (showConfirmar)
+                    {
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                    }
+                    else
+                    {
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    }
+                </button>
+            </div>
+
+            @* Feedback de coincidencia en tiempo real *@
+            @if (!string.IsNullOrEmpty(model.ConfirmarContrasenya) && !string.IsNullOrEmpty(model.NuevaContrasenya))
+            {
+                @if (model.ConfirmarContrasenya == model.NuevaContrasenya)
+                {
+                    <div class="field-ok-inline">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        Las contraseñas coinciden
+                    </div>
+                }
+            }
+
+            <ValidationMessage For="@(() => model.ConfirmarContrasenya)" class="field-error-inline" />
+        </div>
+
+        @* ── Acciones ── *@
+        <div class="form-actions" style="margin-top:2rem; padding-top:1.5rem; border-top:1px solid var(--border);">
+            <a href="/login" class="btn-cancel" style="background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:10px; padding:.72rem 1.35rem; text-decoration:none; font-weight:600;">
+                Volver al login
+            </a>
+            <button type="submit" id="btn-guardar-contrasena" class="btn-save btn-primary" disabled="@(isLoading || (editContext != null && editContext.GetValidationMessages().Any()))">
+                @if (isLoading)
+                {
+                    <div class="spinner" style="width:18px;height:18px;border-width:2px;display:inline-block;"></div>
+                    <span style="margin-left:.5rem;">Guardando...</span>
+                }
+                else
+                {
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width:18px;height:18px;margin-right:6px;vertical-align:middle;display:inline-block;">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    <span>Guardar contraseña</span>
+                }
+            </button>
+        </div>
+    </EditForm>
+</div>
+
+<style>
+    .pwd-card {
+        max-width: 500px;
+        margin: 0 auto;
+        padding: 2rem;
+        animation: cardIn .35s ease both;
+    }
+
+    .pwd-input-wrapper {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .pwd-input-wrapper .form-control {
+        padding-right: 3rem;
+        width: 100%;
+    }
+
+    .pwd-eye {
+        position: absolute;
+        right: .75rem;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: var(--muted);
+        padding: .25rem;
+        display: flex;
+        align-items: center;
+        transition: color .2s;
+    }
+
+    .pwd-eye:hover { color: var(--text); }
+    .pwd-eye svg { width: 20px; height: 20px; }
+
+    .modified.invalid {
+        border-color: var(--danger) !important;
+        box-shadow: 0 0 0 2px rgba(255,79,110,.15) !important;
+    }
+
+    .field-error-inline {
+        display: flex;
+        align-items: center;
+        gap: .35rem;
+        font-size: .78rem;
+        color: var(--danger);
+        margin-top: .45rem;
+        animation: fadeIn .2s ease both;
+    }
+    
+    .field-error-inline::before {
+        content: "⚠"; /* Icono fallback text-based for validation messages */
+        font-weight: bold;
+    }
+
+    .field-ok-inline {
+        display: flex;
+        align-items: center;
+        gap: .35rem;
+        font-size: .78rem;
+        color: var(--success, #22c984);
+        margin-top: .45rem;
+        animation: fadeIn .2s ease both;
+    }
+
+    .pwd-requirements {
+        display: flex;
+        flex-direction: column;
+        gap: .3rem;
+        margin-top: .6rem;
+        padding: .65rem 1rem;
+        background: rgba(255,255,255,.03);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: .8rem;
+    }
+
+    .req-item {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        transition: color .2s;
+    }
+
+    .req-icon { font-size: .9rem; width: 16px; text-align: center; }
+    .req-ok   { color: var(--success, #22c984); }
+    .req-fail { color: var(--muted); }
+
+    .pwd-alert {
+        display: flex;
+        align-items: center;
+        gap: .65rem;
+        padding: .9rem 1.1rem;
+        border-radius: 10px;
+        font-size: .88rem;
+        font-weight: 500;
+        margin-bottom: 1.5rem;
+        animation: fadeIn .25s ease both;
+    }
+
+    .pwd-alert-error {
+        background: rgba(255,79,110,.08);
+        border: 1px solid rgba(255,79,110,.2);
+        color: var(--danger);
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-4px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+</style>
+
+@code {
+    private CambiarContrasenyaDTO model = new();
+    private EditContext? editContext;
+
+    private bool showNueva;
+    private bool showConfirmar;
+    private bool isLoading;
+
+    private string? errorGlobal;
+
+    private bool showToast;
+    private bool isSuccessToast;
+    private string toastMessage = string.Empty;
+
+    private bool req6Chars => model.NuevaContrasenya?.Length >= 6;
+
+    protected override void OnInitialized()
+    {
+        editContext = new EditContext(model);
+        editContext.OnFieldChanged += (sender, eventArgs) => StateHasChanged();
+        editContext.OnValidationStateChanged += (sender, eventArgs) => StateHasChanged();
+    }
+
+    private async Task Guardar()
+    {
+        errorGlobal = null;
+        isLoading = true;
+
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/usuario/reset-contrasena", model);
+
+            if (response.IsSuccessStatusCode)
+            {
+                ShowToast("¡Contraseña actualizada correctamente!", true);
+                await Task.Delay(2000);
+                NavigationManager.NavigateTo("/login");
+            }
+            else
+            {
+                string? msg = null;
+                try
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(content);
+                    if (doc.RootElement.TryGetProperty("message", out var m))
+                        msg = m.GetString();
+                }
+                catch { }
+
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    errorGlobal = msg ?? "No existe ningún usuario registrado con ese DNI.";
+                else
+                    errorGlobal = msg ?? "Ha ocurrido un error al cambiar la contraseña.";
+
+                ShowToast(errorGlobal, false);
+            }
+        }
+        catch
+        {
+            errorGlobal = "Error de conexión con el servidor.";
+            ShowToast("Error de conexión", false);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ShowToast(string message, bool success)
+    {
+        toastMessage = message;
+        isSuccessToast = success;
+        showToast = true;
+        StateHasChanged();
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(3500);
+            showToast = false;
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+}

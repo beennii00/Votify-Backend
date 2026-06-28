@@ -1,0 +1,59 @@
+{
+    "version": "2.0.0",
+    "inputs": [
+        {
+            "id": "seedOption",
+            "type": "pickString",
+            "description": "¿Deseas seedear la base de datos (poblarla de datos initiales)?",
+            "options": [
+                {
+                    "label": "Sin BD (Normal)",
+                    "value": "--no-seed"
+                },
+                {
+                    "label": "Con BD (Seed - Poblar datos)",
+                    "value": "--seed"
+                }
+            ],
+            "default": "--no-seed"
+        }
+    ],
+    "tasks": [
+        {
+            "label": "Run API",
+            "command": "dotnet",
+            "args": [
+                "run",
+                "--launch-profile",
+                "https",
+                "${input:seedOption}"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/API"
+            },
+            "isBackground": true,
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "Run Web",
+            "command": "dotnet",
+            "args": [
+                "run",
+                "--launch-profile",
+                "https"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/Web"
+            },
+            "isBackground": true,
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "Run All",
+            "dependsOn": [
+                "Run API",
+                "Run Web"
+            ]
+        }
+    ]
+}

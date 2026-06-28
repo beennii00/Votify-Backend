@@ -1,0 +1,267 @@
+@using Shared.DTO
+@inject HttpClient Http
+
+@if (Mostrar)
+{
+    <div class="modal-overlay active">
+        <div class="modal-box">
+            <h3 class="modal-title">@(ProyectoActual?.Id == 0 ? "Nuevo Proyecto" : "Editar Proyecto")</h3>
+
+            <div class="wizard-steps">
+                <div class="wizard-step @(pasoActual >= 1 ? "active" : "")">
+                    <div class="step-bubble">1</div>
+                    <span>Detalles</span>
+                </div>
+                <div class="wizard-connector"></div>
+                <div class="wizard-step @(pasoActual == 2 ? "active" : "")">
+                    <div class="step-bubble">2</div>
+                    <span>Miembros</span>
+                </div>
+            </div>
+
+            @if (pasoActual == 1)
+            {
+                <div id="step1">
+                    <div class="form-group">
+                        <label>Nombre del proyecto *</label>
+                        <input type="text" @bind="ProyectoActual.Nombre" class="form-control" maxlength="100" placeholder="Ej. App de Bienestar" />
+                    </div>
+                    <div class="form-group">
+                        <label>Descripción *</label>
+                        <textarea @bind="ProyectoActual.Descripcion" class="form-control" maxlength="500" placeholder="Describe brevemente el proyecto..."></textarea>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(errorProyecto))
+                    {
+                        <div style="margin-top: 10px; margin-bottom: 10px;">
+                            <Web.Components.ErrorAlert Message="@errorProyecto" Type="error" />
+                        </div>
+                    }
+
+                    <div class="modal-actions">
+                        <button type="button" class="btn-ghost" @onclick="Cerrar">Cancelar</button>
+                        <button type="button" class="btn-primary" @onclick="AvanzarPaso2">
+                            Siguiente
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6" /></svg>
+                        </button>
+                    </div>
+                </div>
+            }
+            else if (pasoActual == 2)
+            {
+                <div id="step2">
+                    <div class="step2-section-label">Añadir concursante</div>
+                    <div class="step2-search-wrapper">
+                        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        </svg>
+                        <input type="text" class="form-control" placeholder="Buscar usuario por nombre o DNI..." 
+                               @bind="textoBusqueda" @bind:event="oninput" @onkeyup="BuscarUsuarios" autocomplete="off" />
+                        
+                        @if (resultadosBusqueda != null && resultadosBusqueda.Any() && !string.IsNullOrWhiteSpace(textoBusqueda))
+                        {
+                            <div class="search-results active" style="display: block;">
+                                @foreach (var res in resultadosBusqueda)
+                                {
+                                    <div class="search-item" @onclick="() => AgregarMiembro(res)">
+                                        <div class="search-item-info">
+                                            <div class="search-item-name">@res.Nombre</div>
+                                            <div class="search-item-meta">DNI: @res.Dni</div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <div class="step2-section-label">Concursantes actuales (@equipoActual.Count)</div>
+                    <div class="members-list">
+                        @if (equipoActual.Count == 0)
+                        {
+                            <div class="members-empty">Aún no hay concursantes en este equipo.</div>
+                        }
+                        else
+                        {
+                            @foreach (var miembro in equipoActual)
+                            {
+                                <div class="member-item">
+                                    <div class="member-info">
+                                        <div class="member-name">@miembro.Nombre</div>
+                                        <div class="member-meta">DNI: @miembro.Dni</div>
+                                    </div>
+                                    <button class="btn-remove-member" @onclick="() => RemoverMiembro(miembro)" title="Eliminar">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                                    </button>
+                                </div>
+                            }
+                        }
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(errorProyecto))
+                    {
+                        <div style="margin-top: 10px; margin-bottom: 10px;">
+                            <Web.Components.ErrorAlert Message="@errorProyecto" Type="error" />
+                        </div>
+                    }
+
+                    <div class="modal-actions" style="justify-content: space-between;">
+                        <button type="button" class="btn-back" @onclick="() => pasoActual = 1">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6" /></svg>
+                            Atrás
+                        </button>
+                        <button type="button" class="btn-save-team" @onclick="Guardar" disabled="@Guardando">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                                <polyline points="17 21 17 13 7 13 7 21" />
+                                <polyline points="7 3 7 8 15 8" />
+                            </svg>
+                            @(Guardando ? "Guardando..." : "Guardar Equipo")
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .step2-section-label { font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: .55rem; margin-top: 1rem; }
+    .step2-search-wrapper { position: relative; margin-bottom: 1.5rem; }
+    .step2-search-wrapper .search-icon { position: absolute; left: .85rem; top: 50%; transform: translateY(-50%); color: var(--muted); width: 16px; height: 16px; pointer-events: none; }
+    .step2-search-wrapper .form-control { padding-left: 2.5rem; }
+    
+    .search-results { position: absolute; top: calc(100% + 5px); left: 0; right: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; z-index: 50; max-height: 180px; overflow-y: auto; box-shadow: 0 10px 25px rgba(0,0,0,.5); display: none; }
+    .search-results.active { display: block; }
+    .search-item { padding: .75rem 1rem; cursor: pointer; border-bottom: 1px solid var(--border); transition: background .15s; display: flex; align-items: center; justify-content: space-between; }
+    .search-item:last-child { border-bottom: none; }
+    .search-item:hover { background: rgba(79,124,255,.08); }
+    .search-item-name { font-weight: 600; font-size: .88rem; color: var(--text); }
+    .search-item-meta { font-size: .75rem; color: var(--muted); margin-top: .2rem; }
+    
+    .members-list { display: flex; flex-direction: column; gap: .5rem; max-height: 220px; overflow-y: auto; margin-bottom: 1.5rem; }
+    .member-item { display: flex; align-items: center; justify-content: space-between; padding: .65rem 1rem; background: rgba(255,255,255,.02); border: 1px solid var(--border); border-radius: 10px; }
+    .member-info { flex: 1; min-width: 0; }
+    .member-name { font-weight: 600; font-size: .9rem; color: var(--text); }
+    .member-meta { font-size: .78rem; color: var(--muted); }
+    .btn-remove-member { flex-shrink: 0; width: 28px; height: 28px; border-radius: 6px; background: var(--danger); border: none; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .members-empty { text-align: center; padding: 1.2rem; color: var(--muted); font-size: .85rem; background: rgba(0,0,0,.15); border-radius: 10px; border: 1px dashed var(--border); }
+</style>
+
+@code {
+    [Parameter]
+    public bool Mostrar { get; set; }
+
+    [Parameter]
+    public ProyectoDTO ProyectoActual { get; set; } = new EstandarProyectoDTO();
+        
+    [Parameter]
+    public EventCallback<List<UsuarioBuscadorDto>> OnGuardar { get; set; }
+
+    [Parameter]
+    public EventCallback OnCerrar { get; set; }
+
+    [Parameter]
+    public bool Guardando { get; set; }
+
+    [Parameter]
+    public string Error { get; set; }
+
+    [Parameter]
+    public List<UsuarioBuscadorDto> EquipoInicial { get; set; } = new();
+
+    private int pasoActual = 1;
+    private string errorProyecto = "";
+    private string textoBusqueda = "";
+    private List<UsuarioBuscadorDto> resultadosBusqueda = new();
+    private List<UsuarioBuscadorDto> equipoActual = new();
+
+    private bool _wasShown = false;
+
+    protected override void OnParametersSet()
+    {
+        if (Mostrar && !_wasShown)
+        {
+            Reset();
+        }
+        else if (Mostrar && equipoActual.Count == 0 && EquipoInicial.Count > 0)
+        {
+            equipoActual = new List<UsuarioBuscadorDto>(EquipoInicial);
+        }
+        _wasShown = Mostrar;
+
+        if (!string.IsNullOrEmpty(Error))
+        {
+            errorProyecto = Error;
+        }
+    }
+
+    public void Reset()
+    {
+        pasoActual = 1;
+        errorProyecto = "";
+        textoBusqueda = "";
+        resultadosBusqueda.Clear();
+        equipoActual = new List<UsuarioBuscadorDto>(EquipoInicial ?? new());
+    }
+
+    private void AvanzarPaso2()
+    {
+        if (string.IsNullOrWhiteSpace(ProyectoActual.Nombre))
+        {
+            errorProyecto = "El nombre del proyecto es obligatorio.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(ProyectoActual.Descripcion))
+        {
+            errorProyecto = "La descripción del proyecto es obligatoria.";
+            return;
+        }
+        errorProyecto = "";
+        pasoActual = 2;
+    }
+
+    private async Task BuscarUsuarios()
+    {
+        if (string.IsNullOrWhiteSpace(textoBusqueda) || textoBusqueda.Length < 5)
+        {
+            resultadosBusqueda.Clear();
+            return;
+        }
+
+        try
+        {
+            resultadosBusqueda = await Http.GetFromJsonAsync<List<UsuarioBuscadorDto>>($"api/usuario/buscar?query={textoBusqueda}") ?? new();
+        }
+        catch (Exception)
+        {
+            resultadosBusqueda.Clear();
+            errorProyecto = "Error al buscar usuarios. Verifica la conexión.";
+        }
+    }
+
+    private void AgregarMiembro(UsuarioBuscadorDto usuario)
+    {
+        if (!equipoActual.Any(m => m.Id == usuario.Id))
+        {
+            equipoActual.Add(usuario);
+        }
+        textoBusqueda = "";
+        resultadosBusqueda.Clear();
+    }
+
+    private void RemoverMiembro(UsuarioBuscadorDto usuario)
+    {
+        equipoActual.RemoveAll(m => m.Id == usuario.Id);
+    }
+
+    private async Task Guardar()
+    {
+        await OnGuardar.InvokeAsync(equipoActual);
+    }
+
+    private async Task Cerrar()
+    {
+        Reset();
+        await OnCerrar.InvokeAsync();
+    }
+}

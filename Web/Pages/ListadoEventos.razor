@@ -1,0 +1,227 @@
+﻿@page "/listado-eventos"
+@using Shared.DTO
+@using System.Text.Json
+@inject HttpClient Http
+@inject Web.Services.SimpleAuthService AuthService
+@inject NavigationManager NavigationManager
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Gestión de <span>Eventos</span></h1>
+        <p class="page-subtitle">Listado de todos los eventos de votación registrados</p>
+    </div>
+    
+    <div style="display: flex; gap: 1rem; align-items: center;">
+        @if (esJurado)
+        {
+            <a href="/mis-votaciones" class="btn-cancel" style="background: transparent; border: 1px solid var(--border); color: var(--text); padding: 0.6rem 1.5rem; text-decoration: none; border-radius: 6px; font-weight: bold;">
+                Ir a Mi Dashboard
+            </a>
+        }
+        @if (esAdmin)
+        {
+            <a href="/crear-evento" class="btn-action-primary">
+                + Añadir evento
+            </a>
+        }
+    </div>
+</div>
+
+<div class="events-grid">
+    @if (isLoading)
+    {
+        <div class="empty-state">
+            <p>Cargando eventos…</p>
+        </div>
+    }
+    else if (eventos == null || !eventos.Any())
+    {
+        <div class="empty-state">
+            <p>No hay eventos todavía.</p>
+        </div>
+    }
+    else
+    {
+        @foreach (var ev in eventos)
+        {
+            var estado = ObtenerEstado(ev.FechaInicio, ev.FechaFin);
+            var esEsports = ev is ESportsEventoDto;
+
+            <div class="event-card" @onclick="() => IrADetalle(ev.Id)">
+                <div class="card-top-right">
+                    @if (esAdmin)
+                    {
+                        <div class="card-actions">
+                            <button class="action-btn action-edit" @onclick:stopPropagation="true" @onclick="() => EditarEvento(ev.Id)">
+                                ✏️
+                            </button>
+                            <button class="action-btn action-delete" @onclick:stopPropagation="true" @onclick="() => PrepararEliminar(ev)">
+                                🗑️
+                            </button>
+                        </div>
+                    }
+                    <span class="card-status status-@estado.cssClass">@estado.etiqueta</span>
+                </div>
+                
+                <div class="card-top">
+                    <div class="card-name">
+                        @ev.Nombre
+                        @if (esEsports)
+                        {
+                            <span style="font-size:.7rem;color:#4f7cff;border:1px solid #4f7cff;padding:2px 6px;border-radius:4px;margin-left:8px;">E-Sports</span>
+                        }
+                    </div>
+                </div>
+
+                @if (esEsports)
+                {
+                    var esportsEv = (ESportsEventoDto)ev;
+                    <div style="font-size:.75rem;color:#7a84a8;margin-bottom:.5rem;">
+                        🎮 @esportsEv.Juego | 👾 @esportsEv.Plataforma
+                    </div>
+                }
+
+                <p class="card-desc">@(string.IsNullOrEmpty(ev.Descripcion) ? "Sin descripción" : ev.Descripcion)</p>
+                
+                <div class="card-dates">
+                    <span>Inicio: @ev.FechaInicio.ToString("dd MMM yyyy")</span>
+                    <span>Fin: @ev.FechaFin.ToString("dd MMM yyyy")</span>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@if (eventoAEliminar != null)
+{
+    <div class="modal-overlay open" style="display:flex;">
+        <div class="modal-box">
+            <div class="modal-title">Eliminar evento</div>
+            <p class="modal-body">Esta acción es irreversible. Se eliminará el evento y se desvinculará todo el contenido asociado.</p>
+            <div class="modal-event-name">@eventoAEliminar.Nombre</div>
+
+            @if (!string.IsNullOrEmpty(errorBorrado))
+            {
+                <div class="modal-error visible">@errorBorrado</div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn-ghost" @onclick="CancelarEliminar">Cancelar</button>
+                <button class="btn-danger" @onclick="EliminarEvento" disabled="@isDeleting">
+                    @(isDeleting ? "Eliminando..." : "Sí, eliminar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<EventoDTO>? eventos;
+    private bool isLoading = true;
+    private bool esAdmin = false;
+    private bool esJurado = false;
+    private UsuarioResponseDTO? usuarioActual;
+
+    private EventoDTO? eventoAEliminar;
+    private bool isDeleting = false;
+    private string errorBorrado = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Usuario
+        var userJson = await AuthService.GetUsuarioActivoAsync();
+        if (string.IsNullOrEmpty(userJson))
+        {
+            NavigationManager.NavigateTo("/login");
+            return;
+        }
+
+        usuarioActual = JsonSerializer.Deserialize<UsuarioResponseDTO>(userJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        esAdmin = usuarioActual?.Rol == "Administrador" || usuarioActual?.Rol == "Supervisor";
+        esJurado = usuarioActual?.Rol == "Jurado";
+
+        // Eventos
+        await CargarEventos();
+    }
+
+    private async Task CargarEventos()
+    {
+        isLoading = true;
+        try
+        {
+            eventos = await Http.GetFromJsonAsync<List<EventoDTO>>("api/evento");
+            if (eventos != null)
+            {
+                foreach (var ev in eventos)
+                {
+                    ev.FechaInicio = ev.FechaInicio.ToLocalTime();
+                    ev.FechaFin = ev.FechaFin.ToLocalTime();
+                }
+            }
+        }
+        catch
+        {
+            eventos = new List<EventoDTO>();
+        }
+        isLoading = false;
+    }
+
+    private (string cssClass, string etiqueta) ObtenerEstado(DateTime inicio, DateTime fin)
+    {
+        var ahora = DateTime.Now;
+        if (ahora < inicio) return ("pending", "Pendiente");
+        if (ahora > fin) return ("closed", "Cerrado");
+        return ("active", "Activo");
+    }
+
+    private void IrADetalle(int id)
+    {
+        NavigationManager.NavigateTo($"/detalle-evento?id={id}");
+    }
+
+    private void EditarEvento(int id)
+    {
+        NavigationManager.NavigateTo($"/editar-evento?id={id}");
+    }
+
+    private void PrepararEliminar(EventoDTO evento)
+    {
+        eventoAEliminar = evento;
+        errorBorrado = "";
+    }
+
+    private void CancelarEliminar()
+    {
+        eventoAEliminar = null;
+    }
+
+    private async Task EliminarEvento()
+    {
+        if (eventoAEliminar == null) return;
+        
+        isDeleting = true;
+        errorBorrado = "";
+
+        try
+        {
+            var res = await Http.DeleteAsync($"api/evento/{eventoAEliminar.Id}");
+            if (res.IsSuccessStatusCode)
+            {
+                eventoAEliminar = null;
+                await CargarEventos(); 
+            }
+            else
+            {
+                errorBorrado = "Error al eliminar el evento de la base de datos.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorBorrado = "Error de conexión: " + ex.Message;
+        }
+        finally
+        {
+            isDeleting = false;
+        }
+    }
+}

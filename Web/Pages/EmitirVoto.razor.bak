@@ -1,0 +1,483 @@
+@page "/emitir-voto"
+@using Shared.DTO
+@using Shared.Enums
+@using System.Linq
+@implements IDisposable
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+@inject Web.Services.SimpleAuthService AuthService
+
+<div style="max-width: 800px; margin: 0 auto;">
+    @if (!haCargado)
+    {
+        <div class="empty-state">
+            <div class="spinner"></div>
+            <p>Cargando...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="form-card" style="border-color: var(--danger); text-align: center; padding: 2rem;">
+            <div style="color: var(--danger); font-size: 1.2rem; margin-bottom: 1rem;">⚠️ @errorMessage</div>
+            <button class="btn-cancel" @onclick="VolverAsync">Volver</button>
+        </div>
+    }
+    else if (!proyectos.Any())
+    {
+        <div class="empty-state">
+            <h3>No hay proyectos inscritos en este evento para evaluar.</h3>
+            <button class="btn-cancel" style="margin-top: 1rem;" @onclick="VolverAsync">Volver</button>
+        </div>
+    }
+    else
+    {
+        <div class="breadcrumb">
+            <span>Votación</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            <span>@votacionNombre</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            <span style="color: var(--text);">Votar</span>
+        </div>
+        
+        <div class="page-header" style="align-items: center;">
+            <div>
+                <h1 class="page-title">Selecciona tus favoritos</h1>
+                <p class="page-subtitle">Puedes evaluar hasta un máximo de <span>@maxVotesPerVoter</span> proyecto@(maxVotesPerVoter == 1 ? "" : "s") en esta categoría.</p>
+                <div style="margin-top: 1rem;">
+                    <span class="card-status status-active">Seleccionados: @GetSelectedCount() / @maxVotesPerVoter</span>
+                </div>
+            </div>
+            
+            <div class="form-card" style="padding: 1rem 1.5rem; text-align: center; border-color: var(--danger);">
+                <div style="font-size: .75rem; font-weight: 800; color: var(--danger); letter-spacing: 1px; margin-bottom: .2rem;">TIEMPO RESTANTE</div>
+                <div style="font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums;">@tiempoRestante</div>
+            </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem;">
+            @foreach (var p in proyectos)
+            {
+                var s = state[p.Id];
+                bool isComplete = false;
+                if (votacionData != null)
+                {
+                    if (votacionData.TipoVotacion == TipoVotacion.CriteriosPorPeso)
+                    {
+                        isComplete = s.CriterioVotos != null && s.CriterioVotos.Values.All(v => v > 0) && (estadoComentarios != EstadoComentarios.Obligatorios || !string.IsNullOrWhiteSpace(s.Comentario));
+                    }
+                    else if (votacionData.TipoVotacion == TipoVotacion.Binaria)
+                    {
+                        isComplete = s.Valoracion.HasValue && (s.Valoracion.Value == 0 || s.Valoracion.Value == 1) && (estadoComentarios != EstadoComentarios.Obligatorios || !string.IsNullOrWhiteSpace(s.Comentario));
+                    }
+                    else
+                    {
+                        isComplete = (s.Valoracion ?? 0) > 0 && (estadoComentarios != EstadoComentarios.Obligatorios || !string.IsNullOrWhiteSpace(s.Comentario));
+                    }
+                }
+                else
+                {
+                    isComplete = (s.Valoracion ?? 0) > 0 && (estadoComentarios != EstadoComentarios.Obligatorios || !string.IsNullOrWhiteSpace(s.Comentario));
+                }
+                bool canSelectMore = GetSelectedCount() < maxVotesPerVoter;
+                
+                string cardBorder = s.IsSelected ? "border-color: var(--accent);" : "";
+
+                <div class="card" style="transition: .2s; @cardBorder">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                        <h3 class="card-title" style="margin-bottom: 0;">
+                            @p.Nombre 
+                            @if (isComplete && s.IsSelected) { <span style="color: var(--success); margin-left: .5rem; font-size: 1.1rem;">✓</span> }
+                        </h3>
+                        <button class="@(s.IsSelected ? "btn-cancel" : "btn-primary")" 
+                                disabled="@(!s.IsSelected && !canSelectMore)"
+                                @onclick="() => ToggleSelection(p.Id)">
+                            @(s.IsSelected ? "✕ Quitar" : "Evaluar")
+                        </button>
+                    </div>
+
+                    @if (s.IsSelected)
+                    {
+                        <div class="form-divider" style="margin: 1.5rem 0 1rem 0;"></div>
+                        @if (votacionData != null && votacionData.TipoVotacion == TipoVotacion.Binaria)
+                        {
+                            <div class="form-group" style="margin-bottom: 1.5rem;">
+                                <label>Decisión <span class="required">*</span></label>
+                                <div style="display:flex; gap:.5rem;">
+                                    <button class="@(s.Valoracion == 1 ? "btn-primary" : "btn-cancel")" @onclick="() => s.Valoracion = 1">Sí</button>
+                                    <button class="@(s.Valoracion == 0 ? "btn-primary" : "btn-cancel")" @onclick="() => s.Valoracion = 0">No</button>
+                                </div>
+                            </div>
+                        }
+                        else if (votacionData != null && votacionData.TipoVotacion == TipoVotacion.Numerica)
+                        {
+                            <div class="form-group" style="margin-bottom: 1.5rem;">
+                                <label>Valoración general <span class="required">*</span></label>
+                                <div style="display: flex; gap: .5rem; font-size: 1.8rem; cursor: pointer;">
+                                    @{
+                                        var maxVal = votacionData.ValorMaximoNumerico > 0 ? votacionData.ValorMaximoNumerico : 5;
+                                        for (int i = 1; i <= maxVal; i++)
+                                        {
+                                            var starValue = i;
+                                            var filled = starValue <= (s.Valoracion ?? 0) ? "color: #facc15;" : "color: var(--border);";
+                                            <span style="transition: color .2s; @filled" @onclick="() => { s.Valoracion = starValue; }">★</span>
+                                        }
+                                    }
+                                </div>
+                            </div>
+                        }
+                        else if (votacionData != null && votacionData.TipoVotacion == TipoVotacion.CriteriosPorPeso)
+                        {
+                            <div style="margin-bottom: 1rem; font-weight:600;">Puntúa por criterio</div>
+                            @if (votacionData.Criterios == null || votacionData.Criterios.Count == 0)
+                            {
+                                <div style="color:var(--muted);">No hay criterios definidos para esta votación.</div>
+                            }
+                            else
+                            {
+                                foreach (var crit in votacionData.Criterios)
+                                {
+                                    <div style="display:flex; gap:.5rem; align-items:center; margin-bottom:.6rem;">
+                                        <div style="flex:1; font-weight:600;">@crit.Nombre</div>
+                                        <input type="number" min="0" max="@(votacionData.ValorMaximoNumerico ?? 5)" step="0.1" value="@((state[p.Id].CriterioVotos.ContainsKey(crit.Id) ? state[p.Id].CriterioVotos[crit.Id] : 0M))" @onchange="(e) => OnCriterioVoteChanged(p.Id, crit.Id, e)" class="form-control" style="width:120px;" />
+                                    </div>
+                                }
+                            }
+                        }
+                        
+                        @if (estadoComentarios != EstadoComentarios.Desactivados)
+                        {
+                            bool hasError = estadoComentarios == EstadoComentarios.Obligatorios && string.IsNullOrWhiteSpace(s.Comentario);
+                            string errorClass = hasError ? "error" : "";
+
+                            <div class="form-group">
+                                <label>
+                                    Comentario 
+                                    @if(estadoComentarios == EstadoComentarios.Obligatorios) { <span class="required">*</span> }
+                                    else { <span class="hint">(Opcional)</span> }
+                                </label>
+                                <textarea class="form-control @errorClass" 
+                                          placeholder="Escribe tu opinión o justificación aquí..." 
+                                          @bind="s.Comentario" 
+                                          @bind:event="oninput">
+                                </textarea>
+                                @if (hasError)
+                                {
+                                    <div class="field-error">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                        <span>El comentario es obligatorio para esta evaluación.</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        </div>
+        
+        <div class="form-card" style="padding: 1.25rem; background: rgba(34,201,132,.08); border-color: rgba(34,201,132,.25); margin-bottom: 2rem;">
+            <div style="color: var(--success); font-size: .9rem; display: flex, gap: .5rem;">
+                <span style="font-size: 1.1rem;">💡</span>
+                <span>Tu voto será anónimo para el público general. No podrás modificarlo una vez enviado en conjunto.</span>
+            </div>
+        </div>
+        
+        <div class="form-actions">
+            <button class="btn-save" 
+                    style="font-size: 1rem; padding: 1rem 2rem;" 
+                    disabled="@(!CanSubmit() || enviando)" 
+                    @onclick="SendVotesBatch">
+                @(enviando ? "Enviando..." : "Enviar Voto Final ✓")
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    public int EventoId { get; set; }
+    
+    [SupplyParameterFromQuery]
+    public int VotacionId { get; set; }
+
+    [SupplyParameterFromQuery]
+    public bool FromDashboard { get; set; } 
+
+    private bool haCargado = false;
+    private string errorMessage = "";
+    private string votacionNombre = "Categoría";
+    private int maxVotesPerVoter = 3;
+    private EstadoComentarios estadoComentarios = EstadoComentarios.Opcionales;
+    private bool enviando = false;
+    private bool votacionCerrada = false;
+    
+    private PeriodicTimer? timer;
+    private string tiempoRestante = "--:--:--";
+    private DetalleVotacionDto? votacionData;
+
+    public class ProyectoVoteVm
+    {
+        public int Id { get; set; }
+        public string Nombre { get; set; }
+    }
+
+    public class VoteState
+    {
+        public bool IsSelected { get; set; } = false;
+        public int? Valoracion { get; set; } = null;
+        public string Comentario { get; set; } = "";
+        public Dictionary<int, decimal> CriterioVotos { get; set; } = new();
+    }
+
+    private List<ProyectoVoteVm> proyectos = new();
+    private Dictionary<int, VoteState> state = new();
+    private int currentUserId = 0;
+    private string? currentRol = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (EventoId <= 0 || VotacionId <= 0)
+        {
+            NavigationManager.NavigateTo("/listado-eventos");
+            return;
+        }
+
+        try
+        {
+            var userJson = await AuthService.GetUsuarioActivoAsync();
+            if (!string.IsNullOrEmpty(userJson))
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(userJson);
+                    if (doc.RootElement.TryGetProperty("id", out var idProp) || doc.RootElement.TryGetProperty("Id", out idProp))
+                    {
+                        currentUserId = idProp.GetInt32();
+                    }
+                    if (doc.RootElement.TryGetProperty("rol", out var rolProp) || doc.RootElement.TryGetProperty("Rol", out rolProp))
+                    {
+                        currentRol = rolProp.GetString();
+                    }
+                }
+                catch (Exception ex) { Console.WriteLine($"Error parsing user JSON in OnInitializedAsync: {ex.Message}"); }
+            }
+
+            if (currentUserId <= 0 && currentRol != "Invitado")
+            {
+                errorMessage = "Acceso denegado. Debes iniciar sesión para votar.";
+                haCargado = true;
+                return;
+            }
+
+            try
+            {
+                votacionData = await Http.GetFromJsonAsync<DetalleVotacionDto>($"api/Votacion/{EventoId}/{VotacionId}/detalle");
+                if (votacionData != null)
+                {
+                    if (!string.IsNullOrEmpty(votacionData.Nombre)) votacionNombre = votacionData.Nombre;
+                    maxVotesPerVoter = votacionData.MaxVotesPerVoter > 0 ? votacionData.MaxVotesPerVoter : 3;
+                    estadoComentarios = votacionData.EstadoComentarios;
+                    
+                    if (DateTime.UtcNow >= votacionData.FechaFin)
+                    {
+                        votacionCerrada = true;
+                        await VolverAsync();
+                        return;
+                    }
+
+                    
+                    if (currentUserId > 0)
+                    {
+                        bool estaAsignado = votacionData.Jurados.Any(j => j.Id == currentUserId);
+                        if (!estaAsignado)
+                        {
+                            errorMessage = "No tienes permiso para votar en esta votación. Solo los jurados asignados pueden participar.";
+                            haCargado = true;
+                            return;
+                        }
+                    }
+
+                    _ = ActualizarReloj();
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"Warning: Could not load votacion details (breadcrumb): {ex.Message}"); }
+
+            proyectos = await Http.GetFromJsonAsync<List<ProyectoVoteVm>>($"api/Vote/proyectos/{EventoId}") ?? new();
+
+            foreach (var p in proyectos)
+            {
+                var vm = new VoteState();
+                if (votacionData != null && votacionData.Criterios != null)
+                {
+                    foreach (var c in votacionData.Criterios)
+                    {
+                        vm.CriterioVotos[c.Id] = 0M;
+                    }
+                }
+                state[p.Id] = vm;
+            }
+
+            haCargado = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Error cargando proyectos o el evento no tiene participantes.";
+            haCargado = true;
+        }
+    }
+
+    private int GetSelectedCount() => state.Values.Count(s => s.IsSelected);
+
+    private void ToggleSelection(int proyectoId)
+    {
+        var s = state[proyectoId];
+        if (s.IsSelected)
+        {
+            s.IsSelected = false;
+        }
+        else if (GetSelectedCount() < maxVotesPerVoter)
+        {
+            s.IsSelected = true;
+        }
+    }
+
+    private bool CanSubmit()
+    {
+        if (votacionCerrada) return false;
+        if (GetSelectedCount() == 0 || GetSelectedCount() > maxVotesPerVoter) return false;
+        foreach (var s in state.Values.Where(v => v.IsSelected))
+        {
+            if (votacionData != null)
+            {
+                if (votacionData.TipoVotacion == TipoVotacion.CriteriosPorPeso)
+                {
+                    if (s.CriterioVotos == null || s.CriterioVotos.Values.Any(v => v <= 0)) return false;
+                }
+                else if (votacionData.TipoVotacion == TipoVotacion.Binaria)
+                {
+                    if (!s.Valoracion.HasValue) return false;
+                }
+                else
+                {
+                    if ((s.Valoracion ?? 0) == 0) return false;
+                }
+
+                if (estadoComentarios == EstadoComentarios.Obligatorios && string.IsNullOrWhiteSpace(s.Comentario)) return false;
+            }
+            else
+            {
+                if ((s.Valoracion ?? 0) == 0) return false;
+                if (estadoComentarios == EstadoComentarios.Obligatorios && string.IsNullOrWhiteSpace(s.Comentario)) return false;
+            }
+        }
+        return true;
+    }
+
+    private void OnCriterioVoteChanged(int proyectoId, int criterioId, ChangeEventArgs e)
+    {
+        if (!state.ContainsKey(proyectoId)) return;
+        if (!decimal.TryParse(Convert.ToString(e.Value), out var v)) v = 0M;
+        state[proyectoId].CriterioVotos[criterioId] = v;
+    }
+
+    private async Task ActualizarReloj()
+    {
+        timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        while (votacionData != null && await timer.WaitForNextTickAsync())
+        {
+            var diff = votacionData.FechaFin - DateTime.UtcNow;
+            if (diff.TotalSeconds <= 0)
+            {
+                tiempoRestante = "00:00:00";
+                votacionCerrada = true;
+                timer.Dispose();
+                await VolverAsync();
+                return;
+            }
+            else
+            {
+                tiempoRestante = $"{(int)diff.TotalHours:D2}:{diff.Minutes:D2}:{diff.Seconds:D2}";
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        timer?.Dispose();
+    }
+
+    private async Task SendVotesBatch()
+    {
+        if (!CanSubmit()) return;
+
+        enviando = true;
+        errorMessage = "";
+
+        EmitirVotoDto? payload = new EmitirVotoDto
+        {
+            VotacionId = VotacionId,
+            UsuarioId = currentUserId,
+            VotosProyectos = proyectos.Where(p => state[p.Id].IsSelected).Select(p =>
+            {
+                var s = state[p.Id];
+                var vp = new VotoProyectoDto
+                {
+                    ProyectoId = p.Id,
+                    Comentario = s.Comentario.Trim()
+                };
+
+                if (votacionData != null && votacionData.TipoVotacion == TipoVotacion.CriteriosPorPeso)
+                {
+                    vp.CriterioVotos = s.CriterioVotos.ToDictionary(k => k.Key, v => v.Value);
+                }
+                else
+                {
+                    vp.Valoracion = s.Valoracion ?? 0;
+                }
+                return vp;
+            }).ToList()
+        };
+
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/Vote/emitir", payload);
+            if (resp.IsSuccessStatusCode)
+            {
+                if (currentRol == "Invitado")
+                {
+                    await AuthService.LogOutAsync();
+                    NavigationManager.NavigateTo("/login?msg=voto_enviado_ok");
+                }
+                else
+                {
+                    await VolverAsync();
+                }
+            }
+            else
+            {
+                var errorMsg = await resp.Content.ReadAsStringAsync();
+                errorMessage = $"Error: {errorMsg}";
+                enviando = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Hubo un error de conexión.";
+            enviando = false;
+        }
+    }
+
+    private async Task VolverAsync()
+    {
+        if (currentRol == "Invitado")
+        {
+            await AuthService.LogOutAsync();
+            NavigationManager.NavigateTo("/login");
+        }
+        else
+        {
+            var dashParam = FromDashboard ? "&fromDashboard=true" : "";
+            NavigationManager.NavigateTo($"/detalle-votacion?eventoId={EventoId}&votacionId={VotacionId}{dashParam}");
+        }
+    }
+}

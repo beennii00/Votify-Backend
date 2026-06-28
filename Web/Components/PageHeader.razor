@@ -1,0 +1,29 @@
+<div class="page-header-standard">
+    <h1 class="page-title">
+        @if (TitleTemplate != null)
+        {
+            @TitleTemplate
+        }
+        else
+        {
+            @Title
+        }
+    </h1>
+    @if (!string.IsNullOrEmpty(Subtitle))
+    {
+        <p class="page-subtitle">@Subtitle</p>
+    }
+    @if (ChildContent != null)
+    {
+        <div class="w-100 mt-2">
+            @ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public RenderFragment? TitleTemplate { get; set; }
+    [Parameter] public string Subtitle { get; set; } = string.Empty;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

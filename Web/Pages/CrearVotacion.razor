@@ -1,0 +1,1096 @@
+@page "/crear-votacion"
+@page "/crear-votacion/{EventoId:int}"
+@page "/editar-votacion/{EventoId:int}/{VotacionId:int}"
+
+@using System.ComponentModel.DataAnnotations
+@using System.Linq
+@using System.Text.Json
+@using Shared.DTO
+@using Shared.Enums
+@inject NavigationManager Navigation
+@inject HttpClient Http
+@inject Web.Services.SimpleAuthService AuthService
+@inject IJSRuntime JS
+
+<PageTitle>@(IsEdit ? "Editar Votación" : "Nueva Votación") - Votify</PageTitle>
+
+@if (Cargando)
+{
+    <p>Cargando datos...</p>
+}
+else
+{
+    <div class="breadcrumb" style="display:flex; align-items:center; gap:.5rem; font-size:.8rem; color:var(--muted); margin-bottom:2rem;">
+        <a href="/listado-eventos" style="color:var(--muted); text-decoration:none;">Votaciones</a>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width:12px; height:12px; opacity:.5;">
+            <polyline points="9 18 15 12 9 6"/>
+        </svg>
+        <span style="color:var(--text);">@(IsEdit ? "Editar Votación" : "Nueva Votación")</span>
+    </div>
+
+    <Web.Components.PageHeader Subtitle="@(Evento != null ? $"Para el evento: {Evento.Nombre}" : "")">
+        <TitleTemplate>
+            @(IsEdit ? "Editar" : "Crear") <span>Votación</span>
+        </TitleTemplate>
+    </Web.Components.PageHeader>
+
+    @if (ShowToast)
+    {
+        <div class="toast show">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            <span>Votación guardada correctamente</span>
+        </div>
+    }
+
+    <div class="form-card">
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div style="margin-bottom: 1rem;">
+                <Web.Components.ErrorAlert Message="@ErrorMessage" Type="error" />
+            </div>
+        }
+
+        <div class="wizard-steps">
+            <div class="wizard-step @(pasoActual >= 1 ? "active" : "")">
+                <div class="step-bubble">1</div>
+                <span>Información Básica</span>
+            </div>
+            <div class="wizard-connector"></div>
+            <div class="wizard-step @(pasoActual >= 2 ? "active" : "")">
+                <div class="step-bubble">2</div>
+                <span>Privacidad y Jurados</span>
+            </div>
+            <div class="wizard-connector"></div>
+            <div class="wizard-step @(pasoActual >= 3 ? "active" : "")">
+                <div class="step-bubble">3</div>
+                <span>Reglas de Evaluación</span>
+            </div>
+            <div class="wizard-connector"></div>
+            <div class="wizard-step @(pasoActual == 4 ? "active" : "")">
+                <div class="step-bubble">4</div>
+                <span>Premios</span>
+            </div>
+        </div>
+
+        <EditForm EditContext="editContext" OnValidSubmit="GuardarVotacion">
+            <DataAnnotationsValidator />
+
+            @if (pasoActual == 1)
+            {
+                <div id="step1">
+                    <div class="form-group">
+                        <label for="nombre">Nombre de la votación <span class="required">*</span></label>
+                        <InputText id="nombre" class="form-control" @bind-Value="VotacionModel.Nombre" placeholder="Introduce el nombre de la votación." maxlength="200" />
+                        <ValidationMessage For="@(() => VotacionModel.Nombre)" class="field-error" />
+                    </div>
+
+                    <div class="form-group">
+                        <label for="descripcion">Descripción</label>
+                        <InputTextArea id="descripcion" class="form-control" @bind-Value="VotacionModel.Descripcion" placeholder="Introduce una descripción sobre la votación." maxlength="500" style="min-height: 110px;"></InputTextArea>
+                        <div class="char-count" style="font-size:.72rem; opacity:.6; text-align:right; margin-top:.3rem;">@(((VotacionModel.Descripcion?.Length) ?? 0)) / 500</div>
+                    </div>
+
+                    <div class="form-row" style="display:grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
+                        <div class="form-group">
+                            <label>Fecha y Hora de Inicio <span class="required">*</span></label>
+                            <input type="datetime-local" class="form-control"
+                                value="@(VotacionModel.FechaInicio?.ToString("yyyy-MM-ddTHH:mm"))"
+                                @onchange="OnFechaInicioChanged" />
+                            <ValidationMessage For="@(() => VotacionModel.FechaInicio)" class="field-error" />
+                        </div>
+                        <div class="form-group">
+                            <label>Fecha y Hora de Fin <span class="required">*</span></label>
+                            <input type="datetime-local" class="form-control"
+                                value="@(VotacionModel.FechaFin?.ToString("yyyy-MM-ddTHH:mm"))"
+                                min="@(VotacionModel.FechaInicio?.ToString("yyyy-MM-ddTHH:mm"))"
+                                @onchange="OnFechaFinChanged" />
+                            <ValidationMessage For="@(() => VotacionModel.FechaFin)" class="field-error" />
+                        </div>
+                    </div>
+                    @if (FechaFinInvalida)
+                    {
+                        <div style="color:var(--danger); font-size:.78rem; margin-top:-.5rem; margin-bottom:.5rem;">
+                            ⚠️ La fecha de fin debe ser posterior a la fecha de inicio.
+                        </div>
+                    }
+
+                    <div class="form-actions" style="display:flex; justify-content:space-between; align-items:center; gap:.85rem; margin-top:2rem; padding-top:1.75rem; border-top:1px solid var(--border);">
+                        <button type="button" @onclick="Volver" class="btn-cancel" style="background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:10px; padding:.72rem 1.35rem; text-decoration:none; font-weight:600; cursor:pointer;">Cancelar</button>
+                        <button type="button" class="btn-primary" @onclick="AvanzarPaso2">
+                            Siguiente
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6" /></svg>
+                        </button>
+                    </div>
+                </div>
+            }
+            else if (pasoActual == 2)
+            {
+                <div id="step2">
+                    <h2 class="section-title">Gestión: ¿Quién puede votar?</h2>
+
+                    <div class="section-panel" style="margin-bottom: 1.5rem; border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h3 style="font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.1rem; margin: 0 0 0.25rem 0;">🌍 Votación Popular</h3>
+                                <p style="margin: 0; font-size: 0.85rem; color: var(--muted);">Permite que cualquier persona con el link pueda votar en esta convocatoria.</p>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 1rem;">
+                                <span style="font-size: 0.85rem; font-weight: bold; color: var(--text); opacity: @(IsEdit ? "0.5" : "1");">
+                                    @(VotacionModel.EsVotacionPopular ? "HABILITADO" : "DESHABILITADO")
+                                </span>
+                                <div class="form-check form-switch" style="font-size: 1.5rem; display: flex; align-items: center; margin: 0;">
+                                    <InputCheckbox @bind-Value="VotacionModel.EsVotacionPopular" class="form-check-input" role="switch" disabled="@IsEdit" style="margin: 0; cursor: pointer;" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (esAdmin)
+                    {
+                        <div class="section-panel jurados-panel" style="margin-bottom: 2rem; border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                <h3 style="font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.1rem; margin: 0;">⚖️ Asignar Jurados</h3>
+                                <div class="panel-badge" style="background: var(--bg-hover); padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem; border: 1px solid var(--border);">Admin</div>
+                            </div>
+
+                            <div class="jurados-toolbar" style="margin-bottom: 1rem;">
+                                <input type="text" class="form-control" @bind="busquedaJurado" @bind:event="oninput" placeholder="Buscar jurados por nombre o por DNI..." style="width: 100%;" />
+                            </div>
+
+                            <div class="jurados-grid" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 0.85rem;">
+                                @if (todosLosJurados == null)
+                                {
+                                    <div class="empty-state" style="padding: 1rem; text-align: center; color: var(--muted);"><p>Cargando jurados...</p></div>
+                                }
+                                else if (!todosLosJurados.Any())
+                                {
+                                    <div class="empty-state" style="padding: 1rem; text-align: center; color: var(--muted);"><p>No hay jurados registrados en el sistema.</p></div>
+                                }
+                                else
+                                {
+                                    var filtrados = todosLosJurados
+                                        .Where(j => string.IsNullOrWhiteSpace(busquedaJurado) || 
+                                                    j.Nombre.Contains(busquedaJurado, StringComparison.OrdinalIgnoreCase) || 
+                                                    (j.Dni != null && j.Dni.Contains(busquedaJurado, StringComparison.OrdinalIgnoreCase)))
+                                        .ToList();
+
+                                    if (!filtrados.Any())
+                                    {
+                                        <div class="empty-state" style="padding: 1rem; text-align: center; color: var (--muted);"><p>No se encontraron coincidiencias.</p></div>
+                                    }
+                                    else
+                                    {
+                                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.85rem;">
+                                            @foreach (var j in filtrados)
+                                            {
+                                                <label class="jurado-item" style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.65rem; background: var(--bg-hover); border-radius: 6px; cursor: pointer; border: 1px solid transparent; transition: border-color 0.2s;">
+                                                    <input type="checkbox" class="form-check-input" checked="@juradosSeleccionadosIds.Contains(j.Id)" @onchange="@(e => ToggleJuradoSeleccion(j.Id, (bool)(e.Value ?? false)))" style="margin-top: 0.2rem; cursor: pointer; width: 1.1rem; height: 1.1rem;" />
+                                                    <div style="display: flex; flex-direction: column;">
+                                                        <strong style="font-size: 0.9rem; line-height: 1.2;">@j.Nombre</strong>
+                                                        <small style="color: var(--muted); font-size: 0.75rem; margin-top: 0.15rem;">@j.Dni</small>
+                                                    </div>
+                                                </label>
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    <div class="form-actions" style="display:flex; justify-content:space-between; align-items:center; gap:.85rem; margin-top:2rem; padding-top:1.75rem; border-top:1px solid var(--border);">
+                        <button type="button" class="btn-cancel" style="background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:10px; padding:.72rem 1.35rem; text-decoration:none; font-weight:600;" @onclick="() => pasoActual = 1">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px;height:16px;vertical-align:middle;margin-right:6px;"><polyline points="15 18 9 12 15 6" /></svg>
+                            Atrás
+                        </button>
+                        <button type="button" class="btn-primary" @onclick="AvanzarPaso3">
+                            Siguiente
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6" /></svg>
+                        </button>
+                    </div>
+                </div>
+            }
+            else if (pasoActual == 3)
+            {
+                <div id="step3">
+                    <div class="form-group">
+                        <label>Comentarios en la evaluación</label>
+                        <InputSelect @bind-Value="VotacionModel.EstadoComentarios" class="form-control">
+                            <option value="@EstadoComentarios.Desactivados" style="color:black;">Desactivados</option>
+                            <option value="@EstadoComentarios.Opcionales" style="color:black;">Opcionales</option>
+                            <option value="@EstadoComentarios.Obligatorios" style="color:black;">Obligatorios</option>
+                        </InputSelect>
+                        <ValidationMessage For="@(() => VotacionModel.EstadoComentarios)" class="field-error" />
+                        <small style="color:var(--muted); font-size:0.8rem; margin-top:0.3rem; display:block;">
+                            Configura si los votantes pueden, deben o no tienen permitido dejar comentarios.
+                        </small>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 1.25rem;">
+                        <label for="maxVotes">Número máximo de proyectos a votar <span class="required">*</span></label>
+                        <InputNumber id="maxVotes" class="form-control" @bind-Value="VotacionModel.MaxVotesPerVoter" placeholder="0" min="1" />
+                        <ValidationMessage For="@(() => VotacionModel.MaxVotesPerVoter)" class="field-error" />
+                    </div>
+
+                    <div class="form-divider" style="height:1px; background:var(--border); margin:2.5rem 0 1.5rem 0;"></div>
+
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <label>Plantilla de votación</label>
+                        <InputSelect @bind-Value="TipoSelected" class="form-control">
+                            @foreach (TipoVotacion t in Enum.GetValues(typeof(TipoVotacion)))
+                            {
+                                <option value="@t.ToString()">@GetTipoLabel(t)</option>
+                            }
+                        </InputSelect>
+                        <small style="color:var(--muted); display:block; margin-top:.4rem; font-size:.85rem;">Selecciona el tipo de votación y configura los parámetros según la plantilla.</small>
+                    </div>
+
+                    <div class="template-card" style="border:1px solid var(--border); border-radius:8px; padding:1rem; margin-top:1rem; background:var(--card);">
+                        <h3 class="section-label" style="margin-top:0;">Configuración de @GetTipoLabel(TipoSelected)</h3>
+
+                        @if (TipoSelected == TipoVotacion.Binaria)
+                        {
+                            <div style="padding:.6rem 0;">
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:.75rem;">
+                                    <InputText class="form-control" @bind-Value="BinariaOptionSi" placeholder="Opción: Sí" />
+                                    <InputText class="form-control" @bind-Value="BinariaOptionNo" placeholder="Opción: No" />
+                                </div>
+                                <div style="color:var(--muted); margin-top:.6rem; font-size:.9rem;">Resultado: Conteo de las votaciones y cálculo por porcentaje</div>
+                            </div>
+                        }
+
+                        @if (TipoSelected == TipoVotacion.Numerica)
+                        {
+                            <div style="padding:.6rem 0;">
+                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:.75rem;">
+                                    <div>
+                                        <label style="font-size:.85rem; color:var(--muted);">Valor mínimo</label>
+                                        <InputNumber class="form-control" @bind-Value="ValorMinimoNumerico" min="1" />
+                                    </div>
+                                    <div>
+                                        <label style="font-size:.85rem; color:var(--muted);">Valor máximo</label>
+                                        <InputNumber class="form-control" @bind-Value="VotacionModel.ValorMaximoNumerico" min="1" />
+                                    </div>
+                                </div>
+
+                                @if (VotacionModel.ValorMaximoNumerico.HasValue)
+                                {
+                                    <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.75rem;">
+                                        @for (int n = ValorMinimoNumerico; n <= VotacionModel.ValorMaximoNumerico.Value; n++)
+                                        {
+                                            <button type="button" class="btn btn-sm" style="padding:.4rem .7rem; border-radius:8px; background:var(--muted-bg);">@n</button>
+                                        }
+                                    </div>
+                                }
+
+                                <div style="color:var(--muted); margin-top:.6rem; font-size:.9rem;">Resultado: Promedio de puntuación — gana el mayor promedio</div>
+                            </div>
+                        }
+
+                        @if (TipoSelected == TipoVotacion.CriteriosPorPeso)
+                        {
+                            <div style="padding:.6rem 0;">
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <h4 class="section-label" style="margin:0; flex:1;">Configuración de Criterios Ponderados</h4>
+                                    <button type="button" @onclick="AddCriterio" class="btn-save btn-primary" style="padding:.45rem .9rem; font-size:.95rem; border-radius:10px;">+ Agregar Criterio</button>
+                                </div>
+
+                                <div style="margin-top:1rem;">
+                                    @if (VotacionModel.Criterios == null || VotacionModel.Criterios.Count == 0)
+                                    {
+                                        <div style="color:var(--muted); text-align:center; padding:1.5rem;">No hay criterios configurados aún.</div>
+                                    }
+
+                                    @for (int i = 0; i < (VotacionModel.Criterios?.Count ?? 0); i++)
+                                    {
+                                        var idx = i;
+                                        var criterio = VotacionModel.Criterios![idx];
+                                        <div @key="(criterio.Id, idx)" style="border:1px solid var(--border); border-radius:6px; padding:.75rem; margin-top:.6rem;">
+                                            <div style="display:grid; grid-template-columns: 1fr 100px 40px; gap:.75rem; align-items:center;">
+                                                <div>
+                                                    <label style="font-size:.85rem; color:var(--muted);">Nombre del criterio</label>
+                                                    <InputText class="form-control" @bind-Value="criterio.Nombre" placeholder="Nombre del criterio" />
+                                                </div>
+                                                <div>
+                                                    <label style="font-size:.85rem; color:var(--muted);">Peso (%)</label>
+                                                    <input type="number" min="0" max="100" value="@((int)(criterio.Peso * 100))" class="form-control" @onchange="(e) => OnCriterioPesoChanged(idx, e)" style="text-align:center;" />
+                                                </div>
+                                                <div style="text-align:right; padding-top:1.5rem;">
+                                                    <button type="button" title="Eliminar criterio" @onclick="() => RemoveCriterio(idx)" style="background:transparent; border:none; font-size:1.1rem; padding:.3rem; color:var(--muted);">✕</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1rem; padding:0.75rem; background:var(--bg-hover); border-radius:6px;">
+                                        <div style="font-size:.9rem; color:var(--muted); font-weight:600;">Total de pesos:</div>
+                                        <div style="font-weight:700; color:@ColorForCriterios(); font-size:1.1rem;">@Math.Round(CriteriosSumPercent())%</div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="form-actions" style="display:flex; justify-content:space-between; align-items:center; gap:.85rem; margin-top:2rem; padding-top:1.75rem; border-top:1px solid var(--border);">
+                        <button type="button" class="btn-cancel" style="background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:10px; padding:.72rem 1.35rem; text-decoration:none; font-weight:600;" @onclick="() => pasoActual = 2">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px;height:16px;vertical-align:middle;margin-right:6px;"><polyline points="15 18 9 12 15 6" /></svg>
+                            Atrás
+                        </button>
+                        <button type="button" class="btn-primary" @onclick="AvanzarPaso4">
+                            Siguiente
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6" /></svg>
+                        </button>
+                    </div>
+                </div>
+            }
+            else if (pasoActual == 4)
+            {
+                <div id="step4">
+                    <!-- Premio: bloque visible con guía clara -->
+                    <div class="section-panel" style="margin-top:1.25rem; border:1px solid var(--border); border-radius:8px; padding:1rem;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem;">
+                            <div>
+                                <h3 class="section-label" style="margin:0;">Premio 1.er clasificado</h3>
+                                <p style="margin:.4rem 0 0 0; color:var(--muted); font-size:0.85rem;">Activa esta opción para asignar automáticamente el premio al proyecto que quede primero al cerrar la votación.</p>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:.6rem;">
+                                <span style="font-size:.82rem; color:var(--muted); font-weight:600;">@((VotacionModel.AgregarPremio) ? "Activo" : "Inactivo")</span>
+                                <InputCheckbox @bind-Value="VotacionModel.AgregarPremio" @bind-Value:after="OnAgregarPremioChanged" class="form-check-input" />
+                            </div>
+                        </div>
+
+                        @if (VotacionModel.AgregarPremio)
+                        {
+                            <div style="margin-top:1rem; border-top:1px solid var(--border); padding-top:1rem;">
+                                <label style="margin-bottom:.75rem; display:block;">
+                                    Emoji del premio <span class="required">*</span>
+                                </label>
+                                <div style="display:grid; grid-template-columns:repeat(8, minmax(0, 1fr)); gap:.45rem; border:1px solid @(EmojiNoSeleccionado && mostrarErroresPremio ? "var(--danger)" : "var(--border)"); border-radius:8px; padding:.75rem;">
+                                    @foreach (var e in EmojiOptions)
+                                    {
+                                        var isActive = VotacionModel.Premio != null && VotacionModel.Premio.Emoji == e;
+                                        <button type="button"
+                                                class="emoji-btn"
+                                                style="height:44px; border-radius:8px; border:1px solid @(isActive ? "var(--accent)" : "var(--border)"); background:@(isActive ? "rgba(255,255,255,.08)" : "transparent"); font-size:1.25rem; cursor:pointer;"
+                                                @onclick="() => SelectEmoji(e)">
+                                            @e
+                                        </button>
+                                    }
+                                </div>
+                                @if (EmojiNoSeleccionado && mostrarErroresPremio)
+                                {
+                                    <div class="field-error" style="display:flex; align-items:center; gap:.35rem; font-size:.78rem; color:var(--danger); margin-top:.45rem;">Debes seleccionar un emoji para el premio.</div>
+                                }
+
+                                <div style="margin-top:1rem; max-width:520px;">
+                                    <label style="display:block; margin-bottom:.45rem;">
+                                        Nombre del premio <span class="required">*</span>
+                                    </label>
+                                    <input type="text" class="@($"form-control {(NombrePremioVacio && mostrarErroresPremio ? "error" : "")}")" value="@VotacionModel.Premio?.Nombre" @oninput="@(e => { if (VotacionModel.Premio != null) VotacionModel.Premio.Nombre = e.Value?.ToString() ?? string.Empty; })" placeholder="Ej: Premio Innovación 2026" />
+                                    @if (NombrePremioVacio && mostrarErroresPremio)
+                                    {
+                                        <div class="field-error" style="display:flex; align-items:center; gap:.35rem; font-size:.78rem; color:var(--danger); margin-top:.45rem;">El nombre del premio es obligatorio.</div>
+                                    }
+                                    <small style="display:block; margin-top:.4rem; color:var(--muted);">Se mostrará junto al emoji en el detalle de la votación.</small>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="form-actions" style="display:flex; justify-content:space-between; align-items:center; gap:.85rem; margin-top:2rem; padding-top:1.75rem; border-top:1px solid var(--border);">
+                        <button type="button" class="btn-cancel" style="background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:10px; padding:.72rem 1.35rem; text-decoration:none; font-weight:600;" @onclick="() => pasoActual = 3">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px;height:16px;vertical-align:middle;margin-right:6px;"><polyline points="15 18 9 12 15 6" /></svg>
+                            Atrás
+                        </button>
+                        <button type="submit" class="btn-save btn-primary" disabled="@(IsSaving || PremioInvalido)" @onclick="MarcarErroresPremio">
+                            @if (IsSaving)
+                            {
+                                <span>Guardando...</span>
+                            }
+                            else
+                            {
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width: 18px; height: 18px; margin-right: 6px; vertical-align: middle; display: inline-block;">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                </svg>
+                                <span>@(IsEdit ? "Guardar Cambios" : "Crear Votación")</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+            }
+        </EditForm>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int? EventoId { get; set; }
+
+    [Parameter]
+    public int? VotacionId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "fromDetail")]
+    public bool FromDetail { get; set; }
+
+    public bool IsEdit => VotacionId.HasValue;
+
+    private int pasoActual = 1;
+
+    private void AvanzarPaso2()
+    {
+        if (string.IsNullOrWhiteSpace(VotacionModel.Nombre))
+        {
+            ErrorMessage = "El nombre de la votación es obligatorio.";
+            return;
+        }
+        if (VotacionModel.FechaFin <= VotacionModel.FechaInicio)
+        {
+            ErrorMessage = "La fecha de fin debe ser posterior a la fecha de inicio.";
+            return;
+        }
+        if (Evento != null && (VotacionModel.FechaInicio < Evento.FechaInicio || VotacionModel.FechaFin > Evento.FechaFin))
+        {
+            ErrorMessage = "Las fechas de la votación deben estar dentro del rango de fechas del evento.";
+            return;
+        }
+        ErrorMessage = string.Empty;
+        pasoActual = 2;
+    }
+
+    private void AvanzarPaso3()
+    {
+        ErrorMessage = string.Empty;
+        pasoActual = 3;
+    }
+
+    private void AvanzarPaso4()
+    {
+        ErrorMessage = string.Empty;
+        pasoActual = 4;
+    }
+
+    private void Volver()
+    {
+        if (FromDetail && IsEdit)
+        {
+            Navigation.NavigateTo($"/detalle-votacion?eventoId={EventoId}&votacionId={VotacionId}");
+        }
+        else
+        {
+            Navigation.NavigateTo($"/detalle-evento?Id={EventoId}");
+        }
+    }
+
+    private bool Cargando = false;
+    private bool IsSaving = false;
+    private bool ShowToast = false;
+
+    private VotacionFormDto VotacionModel = new();
+    private bool mostrarErroresPremio = false;
+
+    // Computed: el bloque de premio está activo pero incompleto
+    private bool EmojiNoSeleccionado => VotacionModel.AgregarPremio &&
+        (VotacionModel.Premio == null || string.IsNullOrWhiteSpace(VotacionModel.Premio.Emoji));
+    private bool NombrePremioVacio => VotacionModel.AgregarPremio &&
+        string.IsNullOrWhiteSpace(VotacionModel.Premio?.Nombre);
+    private bool PremioInvalido => EmojiNoSeleccionado || NombrePremioVacio;
+
+    private void MarcarErroresPremio()
+    {
+        if (PremioInvalido) mostrarErroresPremio = true;
+    }
+
+    private EditContext? editContext;
+    private ValidationMessageStore? validationMessageStore;
+
+    private bool FechaFinInvalida => VotacionModel.FechaFin != default && VotacionModel.FechaInicio != default && VotacionModel.FechaFin <= VotacionModel.FechaInicio;
+
+    private void OnFechaInicioChanged(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var dt))
+        {
+            VotacionModel.FechaInicio = dt;
+            // Si la fecha de fin ya no es válida, ajustarla
+            if (VotacionModel.FechaFin <= VotacionModel.FechaInicio)
+                VotacionModel.FechaFin = VotacionModel.FechaInicio.Value.AddHours(1);
+        }
+    }
+
+    private void OnFechaFinChanged(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var dt))
+            VotacionModel.FechaFin = dt;
+    }
+
+    private List<string> EmojiOptions = new() { "🏆","🎖️","🥇","🥈","🥉","🏅","🎗️","🏵️","🌟","✨" };
+
+    private EventoDTO? Evento;
+    private string ErrorMessage = string.Empty;
+
+    // Auth
+    private bool esAdmin = false;
+    private int currentUserId = 0;
+
+    // Jurados
+    private string busquedaJurado = "";
+    private List<UsuarioBuscadorDto>? todosLosJurados = null;
+    private HashSet<int> juradosSeleccionadosIds = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        VotacionModel.Premio ??= new PremioFormDto { Emoji = EmojiOptions.First() };
+
+        if (EventoId == null || EventoId <= 0)
+        {
+            Navigation.NavigateTo("/listado-eventos");
+            return;
+        }
+
+        Cargando = true;
+
+        try
+        {
+            await CheckAuthentication();
+
+            Evento = await Http.GetFromJsonAsync<EventoDTO>($"api/Evento/{EventoId}");
+            if (Evento != null)
+            {
+                Evento.FechaInicio = Evento.FechaInicio.ToLocalTime();
+                Evento.FechaFin = Evento.FechaFin.ToLocalTime();
+            }
+
+                    // Forzar render para que el alert superior sea visible inmediatamente
+                    StateHasChanged();
+            if (IsEdit)
+            {
+                DetalleVotacionDto? response = await Http.GetFromJsonAsync<DetalleVotacionDto>($"api/Votacion/{EventoId}/{VotacionId}/detalle");
+                if (response != null)
+                {
+                    VotacionModel.Nombre = response.Nombre;
+                    VotacionModel.Descripcion = response.Descripcion ?? string.Empty;
+                    VotacionModel.FechaInicio = response.FechaInicio.ToLocalTime();
+                    VotacionModel.FechaFin = response.FechaFin.ToLocalTime();
+                    VotacionModel.EstadoComentarios = response.EstadoComentarios;
+                    VotacionModel.MaxVotesPerVoter = response.MaxVotesPerVoter;
+                    VotacionModel.EsVotacionPopular = response.EsVotacionPopular;
+
+                    if (response.Jurados != null)
+                    {
+                        foreach (var j in response.Jurados)
+                        {
+                            juradosSeleccionadosIds.Add(j.Id);
+                        }
+                    }
+                    // Cargar campos de plantilla si existen
+                    VotacionModel.TipoVotacion = response.TipoVotacion;
+                    VotacionModel.ValorMaximoNumerico = response.ValorMaximoNumerico;
+                    VotacionModel.Criterios = response.Criterios ?? new List<CriterioVotacionDto>();
+                    if (VotacionModel.Criterios != null)
+                    {
+                        foreach (var c in VotacionModel.Criterios)
+                        {
+                            c.FechaInicio = c.FechaInicio.ToLocalTime();
+                            c.FechaFin = c.FechaFin.ToLocalTime();
+                        }
+                    }
+                    VotacionModel.EsPopular = response.EsPopular;
+
+                    // cargar premio si existe
+                    if (response.Premio != null)
+                    {
+                        VotacionModel.AgregarPremio = true;
+                        VotacionModel.Premio = new PremioFormDto { Emoji = response.Premio.Emoji, Nombre = response.Premio.Nombre };
+                    }
+                }
+            }
+
+            else
+            {
+                VotacionModel.MaxVotesPerVoter = 3;
+                VotacionModel.ValorMaximoNumerico = 5;
+                if (Evento != null)
+                {
+                    VotacionModel.FechaInicio = Evento.FechaInicio;
+                    VotacionModel.FechaFin = Evento.FechaFin;
+                }
+                else
+                {
+                    VotacionModel.FechaInicio = DateTime.Now;
+                    VotacionModel.FechaFin = DateTime.Now.AddDays(7);
+                }
+            }
+
+            // Inicializar EditContext y ValidationMessageStore para validación personalizada
+            editContext = new EditContext(VotacionModel);
+            validationMessageStore = new ValidationMessageStore(editContext);
+
+            if (esAdmin)
+            {
+                await CargarTodosLosJurados();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar datos: {ex.Message}");
+        }
+        finally
+        {
+            Cargando = false;
+        }
+    }
+
+    private async Task CheckAuthentication()
+    {
+        try
+        {
+            var userJson = await AuthService.GetUsuarioActivoAsync();
+            if (!string.IsNullOrEmpty(userJson))
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(userJson);
+
+                if (doc.RootElement.TryGetProperty("id", out var idProp) || doc.RootElement.TryGetProperty("Id", out idProp))
+                {
+                    currentUserId = idProp.GetInt32();
+                }
+
+                if (doc.RootElement.TryGetProperty("rol", out var rolProp) || doc.RootElement.TryGetProperty("Rol", out rolProp))
+                {
+                    var rol = rolProp.GetString();
+                    esAdmin = rol == "Admin" || rol == "Administrador" || rol == "Creador";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error auth: {ex.Message}");
+        }
+    }
+
+    private async Task CargarTodosLosJurados()
+    {
+        try
+        {
+            var res = await Http.GetFromJsonAsync<List<UsuarioBuscadorDto>>("api/Usuario/jurados");
+            todosLosJurados = res ?? new();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error al cargar lista de jurados: {ex.Message}";
+            todosLosJurados = new();
+        }
+    }
+
+    private void ToggleJuradoSeleccion(int id, bool estáSeleccionado)
+    {
+        if (estáSeleccionado)
+            juradosSeleccionadosIds.Add(id);
+        else
+            juradosSeleccionadosIds.Remove(id);
+    }
+
+    private void QuitarJurado(int id)
+    {
+        juradosSeleccionadosIds.Remove(id);
+    }
+
+    private async Task GuardarVotacion()
+    {
+        IsSaving = true;
+        ErrorMessage = string.Empty;
+
+        try
+        {
+            if (VotacionModel.FechaFin <= VotacionModel.FechaInicio)
+            {
+                ErrorMessage = "La fecha de fin debe ser posterior a la fecha de inicio.";
+                IsSaving = false;
+                return;
+            }
+            if (!EventoId.HasValue)
+            {
+                ErrorMessage = "No se pudo determinar el evento de la votación.";
+                IsSaving = false;
+                return;
+            }
+            if (Evento != null && (VotacionModel.FechaInicio < Evento.FechaInicio || VotacionModel.FechaFin > Evento.FechaFin))
+            {
+                ErrorMessage = "Las fechas de la votación deben estar dentro del rango de fechas del evento.";
+                IsSaving = false;
+                return;
+            }
+
+            // Asignar los IDs de los jurados seleccionados al modelo antes de guardar
+            VotacionModel.JuradosAsignadosIds = juradosSeleccionadosIds.ToList();
+
+            // Validación de premio en frontend
+            if (VotacionModel.AgregarPremio)
+            {
+                VotacionModel.Premio ??= new PremioFormDto { Emoji = EmojiOptions.First() };
+                if (string.IsNullOrWhiteSpace(VotacionModel.Premio.Emoji))
+                {
+                    VotacionModel.Premio.Emoji = EmojiOptions.First();
+                }
+
+                if (string.IsNullOrWhiteSpace(VotacionModel.Premio.Nombre))
+                {
+                    ErrorMessage = "Debes introducir un nombre para el premio antes de crear la votación.";
+                    validationMessageStore?.Clear(new FieldIdentifier(VotacionModel.Premio, nameof(PremioFormDto.Nombre)));
+                    validationMessageStore?.Add(new FieldIdentifier(VotacionModel.Premio, nameof(PremioFormDto.Nombre)), "El nombre del premio es obligatorio.");
+                    editContext?.NotifyValidationStateChanged();
+                    IsSaving = false;
+                    StateHasChanged();
+                    return;
+                }
+                else
+                {
+                    // borrar mensajes previos si existen
+                    validationMessageStore?.Clear(new FieldIdentifier(VotacionModel.Premio, nameof(PremioFormDto.Nombre)));
+                    // limpiar cartel superior si estaba seteado por esta validación
+                    if (ErrorMessage == "El nombre del premio es obligatorio.")
+                    {
+                        ErrorMessage = string.Empty;
+                        StateHasChanged();
+                    }
+                }
+            }
+            else
+            {
+                // Si no se agrega premio, limpiar errores relacionados
+                if (VotacionModel.Premio != null)
+                {
+                    validationMessageStore?.Clear(new FieldIdentifier(VotacionModel.Premio, nameof(PremioFormDto.Nombre)));
+                    editContext?.NotifyValidationStateChanged();
+                }
+            }
+
+            HttpResponseMessage response;
+
+            if (IsEdit)
+            {
+                // Validaciones adicionales según plantilla
+                if (VotacionModel.TipoVotacion == TipoVotacion.Numerica && (!VotacionModel.ValorMaximoNumerico.HasValue || VotacionModel.ValorMaximoNumerico < 1))
+                {
+                    ErrorMessage = "Para votación numérica, indica el valor máximo de la escala.";
+                    IsSaving = false;
+                    return;
+                }
+
+                if (VotacionModel.TipoVotacion == TipoVotacion.CriteriosPorPeso)
+                {
+                    if (VotacionModel.Criterios == null || VotacionModel.Criterios.Count == 0)
+                    {
+                        ErrorMessage = "Agrega al menos un criterio para la votación por criterios.";
+                        IsSaving = false;
+                        return;
+                    }
+
+                    if (VotacionModel.Criterios.Any(c => c.Peso <= 0 || c.Peso > 1))
+                    {
+                        ErrorMessage = "El peso debe ser mayor a 0%.";
+                        IsSaving = false;
+                        return;
+                    }
+
+                    var sum = VotacionModel.Criterios.Sum(c => (double)c.Peso);
+                    if (Math.Abs(sum - 1.0) > 0.01)
+                    {
+                        ErrorMessage = "La suma de los pesos de los criterios debe ser 1.0 (100%).";
+                        IsSaving = false;
+                        return;
+                    }
+                }
+
+                VotacionModel.EventoId = EventoId.Value;
+                
+                var payload = System.Text.Json.JsonSerializer.Deserialize<VotacionFormDto>(System.Text.Json.JsonSerializer.Serialize(VotacionModel))!;
+                payload.FechaInicio = payload.FechaInicio?.ToUniversalTime();
+                payload.FechaFin = payload.FechaFin?.ToUniversalTime();
+                if (payload.Criterios != null)
+                {
+                    foreach (var c in payload.Criterios)
+                    {
+                        c.FechaInicio = c.FechaInicio.ToUniversalTime();
+                        c.FechaFin = c.FechaFin.ToUniversalTime();
+                    }
+                }
+                
+                response = await Http.PutAsJsonAsync($"api/Votacion/{EventoId}/{VotacionId}", payload);
+            }
+            else
+            {
+                // Validaciones adicionales antes de crear
+                if (VotacionModel.TipoVotacion == TipoVotacion.Numerica && (!VotacionModel.ValorMaximoNumerico.HasValue || VotacionModel.ValorMaximoNumerico < 1))
+                {
+                    ErrorMessage = "Para votación numérica, indica el valor máximo de la escala.";
+                    IsSaving = false;
+                    return;
+                }
+
+                if (VotacionModel.TipoVotacion == TipoVotacion.CriteriosPorPeso)
+                {
+                    if (VotacionModel.Criterios == null || VotacionModel.Criterios.Count == 0)
+                    {
+                        ErrorMessage = "Agrega al menos un criterio para la votación por criterios.";
+                        IsSaving = false;
+                        return;
+                    }
+
+                    if (VotacionModel.Criterios.Any(c => c.Peso <= 0 || c.Peso > 1))
+                    {
+                        ErrorMessage = "El peso debe ser mayor a 0.";
+                        IsSaving = false;
+                        return;
+                    }
+
+                    var sum2 = VotacionModel.Criterios.Sum(c => (double)c.Peso);
+                    if (Math.Abs(sum2 - 1.0) > 0.01)
+                    {
+                        ErrorMessage = "La suma de los pesos de los criterios debe ser 1.0 (100%).";
+                        IsSaving = false;
+                        return;
+                    }
+                }
+
+                VotacionModel.EventoId = EventoId.Value;
+                
+                var payload = System.Text.Json.JsonSerializer.Deserialize<VotacionFormDto>(System.Text.Json.JsonSerializer.Serialize(VotacionModel))!;
+                payload.FechaInicio = payload.FechaInicio?.ToUniversalTime();
+                payload.FechaFin = payload.FechaFin?.ToUniversalTime();
+                if (payload.Criterios != null)
+                {
+                    foreach (var c in payload.Criterios)
+                    {
+                        c.FechaInicio = c.FechaInicio.ToUniversalTime();
+                        c.FechaFin = c.FechaFin.ToUniversalTime();
+                    }
+                }
+                
+                response = await Http.PostAsJsonAsync($"api/Votacion", payload);
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                ShowToast = true;
+                StateHasChanged();
+                await Task.Delay(2000);
+                if (FromDetail && IsEdit)
+                {
+                    Navigation.NavigateTo($"/detalle-votacion?eventoId={EventoId}&votacionId={VotacionId}");
+                }
+                else
+                {
+                    Navigation.NavigateTo($"/detalle-evento?Id={EventoId}");
+                }
+            }
+            else
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                try
+                {
+                    using var doc = JsonDocument.Parse(content);
+                    var root = doc.RootElement;
+                    JsonElement errorsElement;
+                    var errors = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+                    if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("errors", out errorsElement) && errorsElement.ValueKind == JsonValueKind.Object)
+                    {
+                        foreach (var prop in errorsElement.EnumerateObject())
+                        {
+                            var msgs = new List<string>();
+                            if (prop.Value.ValueKind == JsonValueKind.Array)
+                            {
+                                foreach (var item in prop.Value.EnumerateArray())
+                                    msgs.Add(item.GetString() ?? string.Empty);
+                            }
+                            else if (prop.Value.ValueKind == JsonValueKind.String)
+                            {
+                                msgs.Add(prop.Value.GetString() ?? string.Empty);
+                            }
+                            errors[prop.Name] = msgs;
+                        }
+                    }
+                    else if (root.ValueKind == JsonValueKind.Object)
+                    {
+                        // Fallback: root contiene field->messages
+                        foreach (var prop in root.EnumerateObject())
+                        {
+                            if (prop.Value.ValueKind == JsonValueKind.Array)
+                            {
+                                var msgs = new List<string>();
+                                foreach (var item in prop.Value.EnumerateArray()) msgs.Add(item.GetString() ?? string.Empty);
+                                errors[prop.Name] = msgs;
+                            }
+                        }
+                    }
+
+                    if (errors.Count > 0)
+                    {
+                        // Clear previous server validations
+                        validationMessageStore?.Clear();
+
+                        foreach (var kv in errors)
+                        {
+                            var key = kv.Key;
+                            var msgs = kv.Value;
+
+                            FieldIdentifier fieldId;
+                            if (key.Contains('.'))
+                            {
+                                var parts = key.Split('.', 2);
+                                var first = parts[0];
+                                var second = parts.Length > 1 ? parts[1] : string.Empty;
+
+                                if (string.Equals(first, "Premio", StringComparison.OrdinalIgnoreCase) && VotacionModel.Premio != null)
+                                    fieldId = new FieldIdentifier(VotacionModel.Premio, second);
+                                else
+                                    fieldId = new FieldIdentifier(VotacionModel, first);
+                            }
+                            else
+                            {
+                                if (string.Equals(key, "Nombre", StringComparison.OrdinalIgnoreCase))
+                                    fieldId = new FieldIdentifier(VotacionModel, "Nombre");
+                                else
+                                    fieldId = new FieldIdentifier(VotacionModel, key);
+                            }
+
+                            validationMessageStore?.Add(fieldId, msgs);
+                        }
+
+                        editContext?.NotifyValidationStateChanged();
+                        IsSaving = false;
+                        return;
+                    }
+
+                    // si no hay estructura reconocible, mostrar raw
+                    ErrorMessage = $"Error al guardar: {content}";
+                }
+                catch
+                {
+                    ErrorMessage = $"Error al guardar: {content}";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Excepción al guardar: {ex.Message}";
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private string GetErrorClass(string fieldName)
+    {
+        return ""; 
+    }
+
+    private void AddCriterio()
+    {
+        VotacionModel.Criterios ??= new List<CriterioVotacionDto>();
+        var next = VotacionModel.Criterios.Count + 1;
+        VotacionModel.Criterios.Add(new CriterioVotacionDto { Nombre = $"Criterio {next}", Peso = 0.0M });
+    }
+
+    private void SelectEmoji(string emoji)
+    {
+        VotacionModel.Premio ??= new PremioFormDto { Emoji = EmojiOptions.First() };
+        VotacionModel.Premio.Emoji = emoji;
+    }
+
+    private void OnAgregarPremioChanged()
+    {
+        if (VotacionModel.AgregarPremio)
+        {
+            VotacionModel.Premio ??= new PremioFormDto { Emoji = EmojiOptions.First() };
+
+            if (string.IsNullOrWhiteSpace(VotacionModel.Premio.Emoji))
+            {
+                VotacionModel.Premio.Emoji = EmojiOptions.First();
+            }
+        }
+        else
+        {
+            // Al desactivar, resetear estado de errores para próxima activación
+            mostrarErroresPremio = false;
+        }
+    }
+
+    private void RemoveCriterio(int index)
+    {
+        if (VotacionModel.Criterios != null && index >= 0 && index < VotacionModel.Criterios.Count)
+        {
+            VotacionModel.Criterios.RemoveAt(index);
+            StateHasChanged();
+        }
+    }
+
+    // UI helpers and state for templates
+    private TipoVotacion TipoSelected
+    {
+        get => VotacionModel.TipoVotacion;
+        set
+        {
+            if (VotacionModel.TipoVotacion != value)
+            {
+                VotacionModel.TipoVotacion = value;
+                OnTipoChanged();
+            }
+        }
+    }
+
+    private string BinariaOptionSi { get; set; } = "Sí";
+    private string BinariaOptionNo { get; set; } = "No";
+    private int ValorMinimoNumerico { get; set; } = 1;
+
+    private void OnTipoChanged()
+    {
+        if (TipoSelected == TipoVotacion.Numerica || TipoSelected == TipoVotacion.CriteriosPorPeso)
+        {
+            if (!VotacionModel.ValorMaximoNumerico.HasValue || VotacionModel.ValorMaximoNumerico < 1)
+                VotacionModel.ValorMaximoNumerico = 10;
+        }
+
+        if (TipoSelected == TipoVotacion.Binaria)
+        {
+            BinariaOptionSi = "Sí";
+            BinariaOptionNo = "No";
+        }
+    }
+
+    private void OnCriterioPesoChanged(int index, ChangeEventArgs e)
+    {
+        if (VotacionModel.Criterios == null || index < 0 || index >= VotacionModel.Criterios.Count)
+            return;
+
+        if (int.TryParse(e?.Value?.ToString() ?? "0", out var percent))
+        {
+            var p = Math.Clamp(percent, 0, 100);
+            VotacionModel.Criterios[index].Peso = (decimal)p / 100M;
+        }
+    }
+
+    private double CriteriosSumPercent()
+    {
+        if (VotacionModel.Criterios == null) return 0;
+        return (double)VotacionModel.Criterios.Sum(c => c.Peso) * 100.0;
+    }
+
+    private string GetTipoLabel(TipoVotacion t)
+    {
+        return t switch
+        {
+            TipoVotacion.Binaria => "Votación Binaria",
+            TipoVotacion.Numerica => "Votación Numérica",
+            TipoVotacion.CriteriosPorPeso => "Votación Ponderada por Criterios",
+            _ => t.ToString()
+        };
+    }
+
+    private string ColorForCriterios()
+    {
+        return Math.Abs(CriteriosSumPercent() - 100) < 1 ? "green" : "#c00";
+    }
+}

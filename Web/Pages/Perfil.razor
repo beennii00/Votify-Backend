@@ -1,0 +1,389 @@
+@page "/perfil"
+@using Shared.DTO
+@using Web.Services
+@using System.Text.Json
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+@inject SimpleAuthService AuthService
+@inject IJSRuntime JS
+
+<div class="page-header">
+    <div>
+        <h2 class="page-title">👤 Mi Perfil</h2>
+        <p class="page-subtitle">Actualiza tu información personal</p>
+    </div>
+</div>
+
+<EditForm Model="updateModel" OnValidSubmit="GuardarPerfil">
+    <DataAnnotationsValidator />
+
+    <div class="profile-layout">
+        @* ── SECCIÓN AVATAR ── *@
+        <div class="form-card profile-section">
+            <div class="section-label">🎨 Avatar</div>
+            <div class="avatar-selector">
+                @foreach (var emoji in Emojis)
+                {
+                    <button type="button" 
+                            class="btn-avatar @(updateModel.Avatar == emoji ? "selected" : "")" 
+                            @onclick="() => SeleccionarAvatar(emoji)">
+                        @emoji
+                    </button>
+                }
+            </div>
+            <div class="avatar-preview">
+                <span class="avatar-big">@(updateModel.Avatar ?? "🐶")</span>
+                <div class="avatar-preview-text">
+                    <span class="avatar-preview-label">✅ Avatar seleccionado</span>
+                    <span class="avatar-preview-hint">Se mostrará en tu perfil</span>
+                </div>
+            </div>
+        </div>
+
+        @* ── DATOS PERSONALES ── *@
+        <div class="form-card profile-section">
+            <div class="section-label">📝 Datos personales</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>✏️ Nombre completo</label>
+                    <InputText class="form-control" @bind-Value="updateModel.Nombre" />
+                    <ValidationMessage For="@(() => updateModel.Nombre)" />
+                </div>
+            </div>
+        </div>
+
+        @* ── INFORMACIÓN DE CUENTA (BLOQUEADA) ── *@
+        <div class="form-card profile-section">
+            <div class="section-label">🔒 Información de cuenta</div>
+            <div class="form-row">
+                <div class="locked-field-card">
+                    <div class="locked-field-header">
+                        <span class="locked-icon">🪪</span>
+                        <span class="locked-label">DNI <span class="locked-badge">no modificable</span></span>
+                    </div>
+                    <div class="locked-value">@(usuarioActual?.Dni ?? "—")</div>
+                    <div class="locked-hint">🔐 Por seguridad, el DNI no se puede modificar</div>
+                </div>
+                <div class="locked-field-card">
+                    <div class="locked-field-header">
+                        <span class="locked-icon">🛡️</span>
+                        <span class="locked-label">Rol <span class="locked-badge">no modificable</span></span>
+                    </div>
+                    <div class="locked-value">@(usuarioActual?.Rol ?? "—")</div>
+                    <div class="locked-hint">👑 Tu rol es asignado por el administrador</div>
+                </div>
+            </div>
+        </div>
+
+        @* ── CONTRASEÑA ── *@
+        <div class="form-card profile-section">
+            <div class="section-label">🔑 Cambiar contraseña (opcional)</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>🔒 Nueva contraseña</label>
+                    <InputText type="password" class="form-control" @bind-Value="updateModel.Contrasenya" placeholder="Dejar vacío para no cambiar" />
+                    <ValidationMessage For="@(() => updateModel.Contrasenya)" />
+                    <span class="field-hint">Mínimo 6 caracteres</span>
+                </div>
+                <div class="form-group">
+                    <label>🔒 Confirmar contraseña</label>
+                    <InputText type="password" class="form-control" @bind-Value="updateModel.ConfirmarContrasenya" placeholder="Confirma la nueva contraseña" />
+                    <ValidationMessage For="@(() => updateModel.ConfirmarContrasenya)" />
+                </div>
+            </div>
+        </div>
+
+        @* ── MENSAJES ── *@
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="profile-alert profile-alert-error">
+                <span>❌</span> @errorMessage
+            </div>
+        }
+
+        @if (showSuccess)
+        {
+            <div class="profile-alert profile-alert-success">
+                <span>🎉</span> ¡Perfil actualizado correctamente!
+            </div>
+        }
+
+        @* ── BOTONES ── *@
+        <div class="form-actions">
+            <button type="button" class="btn-cancel" @onclick='() => NavigationManager.NavigateTo("/listado-eventos")'>
+                Cancelar
+            </button>
+            <button type="submit" class="btn-primary" disabled="@isLoading">
+                @if (isLoading)
+                {
+                    <div class="spinner"></div>
+                    <span>Guardando...</span>
+                }
+                else
+                {
+                    <span>💾 Guardar cambios</span>
+                }
+            </button>
+        </div>
+    </div>
+</EditForm>
+
+<style>
+    /* ── PROFILE LAYOUT ── */
+    .profile-layout {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        animation: cardIn .4s ease both;
+    }
+
+    .profile-section {
+        padding: 2rem;
+    }
+
+    /* ── AVATAR SELECTOR ── */
+    .avatar-selector {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .btn-avatar {
+        background: rgba(255,255,255,.04);
+        border: 2px solid transparent;
+        font-size: 1.8rem;
+        cursor: pointer;
+        padding: 6px;
+        border-radius: 12px;
+        transition: all 0.2s ease;
+        line-height: 1;
+    }
+
+    .btn-avatar:hover {
+        transform: scale(1.15);
+        background: rgba(79,124,255,.08);
+        border-color: rgba(79,124,255,.2);
+    }
+
+    .btn-avatar.selected {
+        border-color: var(--accent);
+        background: rgba(79,124,255,.12);
+        box-shadow: 0 0 0 3px rgba(79,124,255,.15);
+        transform: scale(1.1);
+    }
+
+    /* ── AVATAR PREVIEW ── */
+    .avatar-preview {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        background: rgba(79,124,255,.06);
+        border: 1px solid rgba(79,124,255,.15);
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+    }
+
+    .avatar-big {
+        font-size: 2.5rem;
+        line-height: 1;
+    }
+
+    .avatar-preview-text {
+        display: flex;
+        flex-direction: column;
+        gap: .15rem;
+    }
+
+    .avatar-preview-label {
+        font-weight: 600;
+        font-size: .9rem;
+        color: var(--text);
+    }
+
+    .avatar-preview-hint {
+        font-size: .78rem;
+        color: var(--muted);
+    }
+
+    /* ── LOCKED FIELDS ── */
+    .locked-field-card {
+        background: rgba(0,0,0,.15);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.25rem;
+        position: relative;
+    }
+
+    .locked-field-header {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        margin-bottom: .6rem;
+    }
+
+    .locked-icon {
+        font-size: 1.1rem;
+    }
+
+    .locked-label {
+        font-size: .82rem;
+        font-weight: 600;
+        color: var(--muted);
+        font-family: 'Syne', sans-serif;
+    }
+
+    .locked-badge {
+        font-size: .65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        background: rgba(255,79,110,.12);
+        color: var(--danger);
+        padding: .15rem .5rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255,79,110,.2);
+        margin-left: .35rem;
+    }
+
+    .locked-value {
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: var(--text);
+        padding: .6rem .85rem;
+        background: rgba(0,0,0,.2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        margin-bottom: .6rem;
+        opacity: .7;
+    }
+
+    .locked-hint {
+        font-size: .75rem;
+        color: var(--accent);
+        opacity: .85;
+    }
+
+    /* ── INPUT LOCKED ── */
+    .form-control-locked {
+        opacity: .5;
+        cursor: not-allowed;
+    }
+
+    /* ── FIELD HINT ── */
+    .field-hint {
+        display: block;
+        font-size: .75rem;
+        color: var(--muted);
+        margin-top: .35rem;
+    }
+
+    /* ── ALERTS ── */
+    .profile-alert {
+        display: flex;
+        align-items: center;
+        gap: .65rem;
+        padding: 1rem 1.25rem;
+        border-radius: 12px;
+        font-size: .9rem;
+        font-weight: 500;
+        animation: cardIn .3s ease both;
+    }
+
+    .profile-alert-error {
+        background: rgba(255,79,110,.08);
+        border: 1px solid rgba(255,79,110,.2);
+        color: var(--danger);
+    }
+
+    .profile-alert-success {
+        background: rgba(34,201,132,.08);
+        border: 1px solid rgba(34,201,132,.2);
+        color: var(--success);
+    }
+
+    @@media (max-width: 600px) {
+        .profile-section {
+            padding: 1.25rem;
+        }
+    }
+</style>
+
+@code {
+    private UpdateUsuarioDTO updateModel = new UpdateUsuarioDTO();
+    private UsuarioResponseDTO? usuarioActual;
+    private int userId;
+    private bool isLoading;
+    private string? errorMessage;
+    private bool showSuccess;
+
+    private readonly string[] Emojis = new[]
+    {
+        "👨‍💼", "👩‍💼", "🧑‍💼", "🦁", "🐯", "🐱", "😺", "🐶",
+        "👨‍💻", "👩‍💻", "🧑‍💻", "🐭", "🐹", "🐰", "🐻", "🐼",
+        "🐨", "🧐", "🤓", "🐮", "🐷", "🐸", "🦊", "🐵",
+        "🐲", "🦄", "🐧", "🐦", "🦉", "🐺"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var userJson = await AuthService.GetUsuarioActivoAsync();
+        if (!string.IsNullOrEmpty(userJson))
+        {
+            usuarioActual = JsonSerializer.Deserialize<UsuarioResponseDTO>(userJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (usuarioActual != null)
+            {
+                userId = usuarioActual.Id;
+                updateModel.Nombre = usuarioActual.Nombre;
+                updateModel.Avatar = usuarioActual.Avatar ?? "🐶";
+            }
+        }
+        else
+        {
+            NavigationManager.NavigateTo("/login");
+        }
+    }
+
+    private void SeleccionarAvatar(string emoji)
+    {
+        updateModel.Avatar = emoji;
+    }
+
+    private async Task GuardarPerfil()
+    {
+        isLoading = true;
+        errorMessage = null;
+        showSuccess = false;
+
+        try
+        {
+            var response = await Http.PutAsJsonAsync($"api/usuario/{userId}", updateModel);
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync();
+                var updatedUser = JsonSerializer.Deserialize<UsuarioResponseDTO>(responseContent, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (updatedUser != null)
+                {
+                    // Update auth state in localStorage (esto dispara OnAuthStateChanged → navbar se actualiza)
+                    await AuthService.LogInAsync(JsonSerializer.Serialize(updatedUser));
+                    // Volver a la página anterior
+                    await JS.InvokeVoidAsync("history.back");
+                }
+            }
+            else
+            {
+                var errorResult = await response.Content.ReadAsStringAsync();
+                errorMessage = $"Error al actualizar el perfil. {errorResult}";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

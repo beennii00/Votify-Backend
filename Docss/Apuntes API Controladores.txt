@@ -1,0 +1,72 @@
+﻿
+APUNTES CONTROLADORES API:
+
+1. La Configuración del "Recepcionista" (Atributos y Clase)
+
+	[ApiController]
+	[Route("api/[controller]")] // controler se sustituye por el nombre de la clase
+	public class ProyectoController : ControllerBase //heredamos metodos utiles como ok()
+
+2. Inyección de Dependencias (El Constructor)
+Le tenemos que pasar el servicio a la API. 
+
+	private readonly IProyectoService _proyectoService;
+	public ProyectoController(IProyectoService proyectoService)
+
+3. Los Verbos HTTP (Los Endpoints)
+Definimos todos los metodos que necesitamos, endpoints. 
+
+GET (Obtener información):
+
+	[HttpGet("/api/eventos/{eventoId}/proyectos")]: 
+		Empieza con /. Esto significa que ignora 
+		la ruta base de la clase y crea una URL totalmente personalizada. 
+		Ideal para relaciones de padre-hijo (obtener proyectos de un evento específico).
+
+	[HttpGet("{id}")]: 
+		Se suma a la base.
+
+POST (Crear):
+
+	[HttpPost]: Recibe datos nuevos.
+
+	[FromBody]: Le indica al controlador que busque los datos del DTO en el body de la petición HTTP.
+				que normalmente viene en formato JSON.
+
+PUT (Actualizar):
+
+	[HttpPut("{id}")]: Modificar un recurso existente. if (id != proyectoDto.Id) 
+
+DELETE (Borrar):
+
+	[HttpDelete("{id}")]: Llama al servicio para eliminar el recurso y devuelve una respuesta vacía si todo sale bien.
+
+	
+4. Como formar los metodos: 
+	Para la cabecera usamos: 
+		public async Task<ActionResult<TipoDeRetorno>> NombreMetodo(Parametros)
+	
+	Para el cuerpo: 
+		llamamos al servicio y le metemos el atributo que necesite para eso. 
+	En PUT y POST:
+		-El atributo de cabecera va precedido por [FromBody].
+		-Hay que validar que el modelo sea el correcto
+		-Hay que validar que el id del recurso 
+
+	En POST: 
+		-Devolvemos CreatedAtAction(nameof(NombreMetodo), new { id = nuevoRecurso.Id }, nuevoRecurso) si todo ha salido bien.
+	En DELELTE: 
+		-Devolvemos NoContent()   si todo ha salido bien. 
+
+	OJO: Tenemos que manejar siempre las entidades con DTOs. 
+
+
+
+
+
+5. Codigos de respuesta: 
+	Ok(...) (200): Todo salió bien, aquí tienes tus datos.
+	Created(...) o CreatedAtAction(...) (201): El recurso se creó con éxito. CreatedAtAction devuelve en las cabeceras la URL ese nuevo recurso.
+	BadRequest(...) (400): El cliente envió datos inválidos o faltantes.
+	NotFound(...) (404): Lo que buscabas no existe en la base de datos.
+	NoContent() (204): La acción (como borrar) tuvo éxito, pero no hay datos que devolverte.

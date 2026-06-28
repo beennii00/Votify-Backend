@@ -1,0 +1,34 @@
+
+
+PATRÓN FÁBRICA - MIS APUNTES
+Para aplicar el patron fabrica a una entidad, debo de crear 4 archivos:
+	1. EVENTOCREATOR: El creador de la entidad generico y abtracto EventoCreator (Factory), que es el va a 
+	tener un metodo abstracto llamado CreateEvento, que es el que se va a encargar de crear la entidad.
+
+	2.ESPORTS_EVENTO_CREATOR: El creador concreto del SUBTIPO , que hereda del creador generico y 
+	va a implementar el metodo CreateEvento (es el que de vd ejecuta  new EsportsEvento(atributos))
+
+	3. EsportsEvento: La entidad concreta del SUBTIPO, que hereda de la entidad Evento,
+	y tiene sus propios atributos y metodos. Algunos metodos como Modalidad() donde devuelve el tipo de
+	evento. Tambien tiene un constructor que recibe los atributos necesarios para crear la entidad.
+
+	4. Evento: La entidad abstracta generica, que es la clase base de todas las entidades subtipo.
+	Tiene los atributos y metodos COMUNOS a todas los subtipos.
+
+
+COMO HACER UN EVENTO TIPO ESTANDAR EJEMPLO: 
+EventoCreator creator = new EventoEstandarCreator();
+Evento evento = creator.Create("Hackathon", "Desc", fechaInicio, fechaFin);
+
+
+COMO AÑADIR ATRIBUTOS EXTRA A LOS SUBTIPOS:
+1. En la clase concreta subtipo añadir los atributos como private readonly string var;
+2. Añadir un nuevo DTO que herede del DTO generico, con los nuevos atributos.
+3. Modificar el Creador Especifico para que en su constructor reciba los tributos extra, y 
+	los pase al crear la entidad concreta.
+4. En EventoService modificar el metofo CreateEvento para que reciba el nuevo DTO, 
+	y dependiendo del tipo de evento, cree el creador concreto correspondiente, y le pase 
+	los atributos necesarios para crear la entidad concreta.
+
+	hola
+	xxx

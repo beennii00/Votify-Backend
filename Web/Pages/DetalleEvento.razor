@@ -1,0 +1,691 @@
+@page "/detalle-evento"
+@using Shared.DTO
+@using System.Text.Json
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+@inject Web.Services.SimpleAuthService AuthService
+
+@if (!esInvitado)
+{
+    <div class="header-back-link">
+        <a href="/listado-eventos" class="header-back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6" /></svg>
+            Volver al listado
+        </a>
+    </div>
+}
+
+<main>
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="delete-alert" style="margin-bottom: 2rem;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            @errorMessage
+        </div>
+    }
+
+    <div class="event-header" style="position: relative; display: flex; flex-direction: column; justify-content: center; min-height: 120px;">
+        @if (evento != null && esAdmin)
+        {
+            <div style="position: absolute; top: 50%; transform: translateY(-50%); right: 1.5rem; display: flex; gap: 0.5rem; flex-direction: column;">
+                <button class="btn-ghost" style="padding: 0.4rem 1rem; border: 1px solid rgba(79,124,255,0.3); background: rgba(79,124,255,0.15); color: var(--accent); border-radius: 8px; display: flex; align-items: center; gap: 0.5rem;" @onclick="EditarEvento">
+                    ✏️ Editar
+                </button>
+                <button class="btn-ghost" style="padding: 0.4rem 1rem; border: 1px solid rgba(255,79,110,0.3); background: rgba(255,79,110,0.12); color: var(--danger); border-radius: 8px; display: flex; align-items: center; gap: 0.5rem;" @onclick="PrepararEliminarEvento">
+                    🗑️ Eliminar
+                </button>
+            </div>
+        }
+
+        <h1 class="event-title" style="padding-right: 120px; margin-top: 0;">
+            @(evento?.Nombre ?? "Cargando...")
+            @if (evento is ESportsEventoDto)
+            {
+                <span style="font-size:1rem;color:#4f7cff;border:1px solid #4f7cff;padding:2px 8px;border-radius:6px;margin-left:12px;vertical-align:text-bottom;font-weight:600;">E-Sports</span>
+            }
+        </h1>
+        
+        @if (evento is ESportsEventoDto esportsEv)
+        {
+            <div style="font-size:1rem;color:#7a84a8;margin-bottom:1.5rem;display:flex;align-items:center;gap:.5rem;">
+                🎮 @esportsEv.Juego | 👾 @esportsEv.Plataforma
+            </div>
+        }
+
+        <p class="event-desc">@(evento?.Descripcion ?? "Por favor espera...")</p>
+        
+        @if (evento != null)
+        {
+            <div class="event-dates">
+                <span>Inicio: @evento.FechaInicio.ToString("dd MMM yyyy")</span>
+                <span>Fin: @evento.FechaFin.ToString("dd MMM yyyy")</span>
+            </div>
+        }
+    </div>
+
+    <div class="tabs-container">
+        <button class="tab-button @(activeTab == "Resumen" ? "active" : "")" @onclick='() => activeTab = "Resumen"'>Resumen</button>
+        <button class="tab-button @(activeTab == "Proyectos" ? "active" : "")" @onclick='() => activeTab = "Proyectos"'>Proyectos</button>
+        <button class="tab-button @(activeTab == "Premiados" ? "active" : "")" @onclick="CambiarTabPremiados">Premiados</button>
+    </div>
+
+    @if (activeTab == "Resumen")
+    {
+    <h2 class="section-title">
+        Votaciones
+        @if (esAdmin)
+        {
+            <button class="btn-action-primary" @onclick='() => NavigationManager.NavigateTo($"/crear-votacion/{Id}")'>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                Añadir Votación
+            </button>
+        }
+    </h2>
+    <div class="grid" id="gridVotaciones">
+        @if (evento == null)
+        {
+            <p class="empty-msg">Cargando...</p>
+        }
+        else if (evento.Votacion == null || !evento.Votacion.Any(v => !esInvitado || v.EsPopular))
+        {
+            <p class="empty-msg">No hay votaciones configuradas para este evento.</p>
+        }
+        else
+        {
+            @foreach (var v in evento.Votacion.Where(v => !esInvitado || v.EsPopular))
+            {
+                var isBlocked = esInvitado && guestVotacionId != 0 && v.Id != guestVotacionId;
+                <div class="card @(isBlocked ? "" : "cursor-pointer")" style="@(isBlocked ? "opacity: 0.6; pointer-events: none;" : "")" @onclick='() => { if (!isBlocked) NavigationManager.NavigateTo($"/detalle-votacion?eventoId={Id}&votacionId={v.Id}"); }'>
+                    @if (esAdmin)
+                    {
+                        <div class="card-actions" style="opacity: 1 !important; transform: none !important; position: absolute; top: 1rem; right: 1rem;" @onclick:stopPropagation="true">
+                            <button class="action-btn action-edit" @onclick='() => NavigationManager.NavigateTo($"/editar-votacion/{Id}/{v.Id}")'>
+                                &#x270F;&#xFE0F;
+                            </button>
+                            <button class="action-btn action-delete" @onclick="() => AbrirModalEliminarVotacion(v)">
+                                &#x1F5D1;&#xFE0F;
+                            </button>
+                        </div>
+                    }
+                    <h4 class="card-title">@v.Nombre</h4>
+                    <p class="card-desc">@(string.IsNullOrEmpty(v.Descripcion) ? "Sin descripción" : v.Descripcion)</p>
+                </div>
+            }
+        }
+    </div>
+    }
+
+    @if (activeTab == "Proyectos")
+    {
+    <h2 class="section-title">
+        Proyectos
+        @if (esAdmin)
+        {
+            <button class="btn-action-primary" @onclick="AbrirModalCrearProyecto">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                Añadir Proyecto
+            </button>
+        }
+    </h2>
+    <div class="grid" id="gridProyectos">
+        @if (isCargandoProyectos)
+        {
+            <p class="empty-msg">Cargando proyectos...</p>
+        }
+        else if (proyectos == null || !proyectos.Any())
+        {
+            <p class="empty-msg">No hay proyectos añadidos en este evento.</p>
+        }
+        else
+        {
+            @foreach (var p in proyectos)
+            {
+                <div class="card">
+                    @if (esAdmin)
+                    {
+                        <div class="card-actions" style="opacity: 1 !important; transform: none !important; position: absolute; top: 1rem; right: 1rem;" @onclick:stopPropagation="true">
+                            <button class="action-btn action-edit" @onclick="() => AbrirModalEditarProyecto(p)">
+                                &#x270F;&#xFE0F;
+                            </button>
+                            <button class="action-btn action-delete" @onclick="() => AbrirModalEliminarProyecto(p)">
+                                &#x1F5D1;&#xFE0F;
+                            </button>
+                        </div>
+                    }
+                    <h4 class="card-title">@p.Nombre</h4>
+                    <p class="card-desc">@(string.IsNullOrEmpty(p.Descripcion) ? "Sin descripción" : p.Descripcion)</p>
+                </div>
+            }
+        }
+    </div>
+    }
+
+    @if (activeTab == "Premiados")
+    {
+        <h2 class="section-title">Premiados</h2>
+        @if (cargandoPremiados)
+        {
+            <p class="empty-msg">Cargando premiados...</p>
+        }
+        else if (evento?.Votacion == null || !evento.Votacion.Any())
+        {
+            <p class="empty-msg">No hay votaciones configuradas para ver premiados.</p>
+        }
+        else
+        {
+            <div class="list-premiados">
+                @foreach (var v in evento.Votacion)
+                {
+                    <div class="card" style="margin-bottom: 1rem; width: 100%;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <h4 class="card-title" style="margin: 0; display:flex; align-items: center; gap: 0.5rem;">
+                                🏆 @v.Nombre
+                            </h4>
+                            <span class="badge" style="background: @(v.Estado == "Cerrada" ? "#1a1e2e" : (v.Estado == "En curso" ? "#1e111a" : "#1e111a")); color: @(v.Estado == "Cerrada" ? "#a0a8c2" : (v.Estado == "En curso" ? "#ffd166" : "#ffd166")); border: 1px solid @(v.Estado == "Cerrada" ? "#2a2f42" : "#2e1a25"); padding: 2px 10px; border-radius: 20px; font-size: 0.85rem;">
+                                @v.Estado
+                            </span>
+                        </div>
+                        @if (detallesVotaciones.TryGetValue(v.Id, out var detalle))
+                        {
+                            <p class="card-desc" style="margin-bottom: 1rem;">@detalle.ProyectosEnCarrera proyectos</p>
+                            <div style="background: var(--surface2); padding: 1rem; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <span style="font-size: 0.8rem; color: var(--muted); display: block; margin-bottom: 0.2rem;">@(v.Estado == "Cerrada" ? "Ganador" : "Líder actual")</span>
+                                    <strong style="font-size: 1rem;">@(string.IsNullOrEmpty(detalle.LiderProvisional) || detalle.LiderProvisional == "Ninguno" ? "N/A" : detalle.LiderProvisional)</strong>
+                                </div>
+                                <div style="display:flex; align-items: center; gap: 0.25rem;">
+                                    <span style="color: #ffd166;">⭐</span>
+                                    <strong>
+                                        @{
+                                            var lider = detalle.ResultadosProvisionales.FirstOrDefault();
+                                            var puntuacion = "0";
+                                            if (lider != null && lider.VotosCount > 0)
+                                            {
+                                                puntuacion = ((double)lider.SumaValoracion / lider.VotosCount).ToString("0.0");
+                                            }
+                                        }
+                                        @puntuacion
+                                    </strong>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                             <p class="empty-msg">Detalles no disponibles</p>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    }
+</main>
+
+<Web.Components.ModalProyecto 
+    Mostrar="mostrarModalProyecto"
+    ProyectoActual="proyectoActual"
+    EquipoInicial="equipoActual"
+    Guardando="guardandoProyecto"
+    Error="@errorProyecto"
+    OnGuardar="GuardarProyectoYEquipo"
+    OnCerrar="CerrarModalProyecto" />
+
+@if (proyectoAEliminar != null)
+{
+    <div class="modal-overlay active">
+        <div class="modal-box">
+            <h3 class="modal-title">Eliminar Proyecto</h3>
+            <p>¿Seguro que deseas eliminar el proyecto <strong>@proyectoAEliminar.Nombre</strong>?</p>
+            <div class="modal-actions">
+                <button class="btn-ghost" @onclick="() => proyectoAEliminar = null">Cancelar</button>
+                <button class="btn-danger" @onclick="ConfirmarEliminarProyecto">Sí, eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (votacionAEliminar != null)
+{
+    <div class="modal-overlay active">
+        <div class="modal-box">
+            <h3 class="modal-title">Eliminar Votación</h3>
+            <p>¿Seguro que deseas eliminar la votación <strong>@votacionAEliminar.Nombre</strong>?</p>
+            <div class="modal-actions">
+                <button class="btn-ghost" @onclick="() => votacionAEliminar = null">Cancelar</button>
+                <button class="btn-danger" @onclick="ConfirmarEliminarVotacion">Sí, eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    /* Estilos especificos que antes estaban en el html para el modal (si no estan en app.css) */
+    .header-back-link { max-width: 1100px; margin: 0 auto; padding: 2rem 2rem 0; }
+
+    .tabs-container {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 2rem;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 0px;
+        border-radius: 12px;
+        background: var(--surface2);
+        padding: 0.5rem;
+        max-width: fit-content;
+    }
+
+    .tab-button {
+        background: none;
+        border: none;
+        color: var(--muted);
+        font-size: 0.95rem;
+        font-weight: 500;
+        padding: 0.5rem 1.5rem;
+        cursor: pointer;
+        border-radius: 8px;
+        transition: all 0.2s;
+    }
+
+    .tab-button.active {
+        background: var(--surface);
+        color: var(--text);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    
+    .tab-button:hover:not(.active) {
+        color: var(--text);
+        background: rgba(255,255,255,0.02);
+    }
+</style>
+
+@if (eventoGlobalAEliminar != null)
+{
+    <div class="modal-overlay open" style="display:flex;">
+        <div class="modal-box">
+            <div class="modal-title">Eliminar evento</div>
+            <p class="modal-body">Esta acción es irreversible. Se eliminará el evento y se desvinculará todo el contenido asociado.</p>
+            <div class="modal-event-name">@eventoGlobalAEliminar.Nombre</div>
+
+            @if (!string.IsNullOrEmpty(errorBorrarEvento))
+            {
+                <div class="modal-error visible">@errorBorrarEvento</div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn-ghost" @onclick="CancelarEliminarEvento">Cancelar</button>
+                <button class="btn-danger" @onclick="ConfirmarEliminarEvento" disabled="@isDeletingEvento">
+                    @(isDeletingEvento ? "Eliminando..." : "Sí, eliminar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery]
+    public int Id { get; set; }
+
+    private string activeTab = "Resumen";
+    private bool cargandoPremiados = false;
+    private Dictionary<int, DetalleVotacionDto> detallesVotaciones = new();
+
+    private async Task CambiarTabPremiados()
+    {
+        activeTab = "Premiados";
+        await CargarPremiados();
+    }
+
+    private async Task CargarPremiados()
+    {
+        if (evento?.Votacion == null || !evento.Votacion.Any()) return;
+        
+        cargandoPremiados = true;
+        foreach (var v in evento.Votacion)
+        {
+            if (!detallesVotaciones.ContainsKey(v.Id))
+            {
+                try
+                {
+                    var dto = await Http.GetFromJsonAsync<DetalleVotacionDto>($"api/Votacion/{Id}/{v.Id}/detalle");
+                    if (dto != null)
+                    {
+                        detallesVotaciones[v.Id] = dto;
+                    }
+                }
+                catch { }
+            }
+        }
+        cargandoPremiados = false;
+    }
+
+    private EventoDTO? evento;
+    private List<ProyectoDTO> proyectos = new();
+    private bool isCargandoProyectos = true;
+    private string errorMessage = "";
+
+    // Modal de proyectos
+    private bool mostrarModalProyecto = false;
+    private ProyectoDTO proyectoActual = new EstandarProyectoDTO();
+    private string errorProyecto = "";
+    private bool guardandoProyecto = false;
+    private List<UsuarioBuscadorDto> equipoActual = new();
+
+    // Eliminar
+    private ProyectoDTO? proyectoAEliminar = null;
+    private VotacionDto? votacionAEliminar = null;
+
+    private EventoDTO? eventoGlobalAEliminar;
+    private bool isDeletingEvento = false;
+    private string errorBorrarEvento = "";
+
+    private bool esAdmin = false;
+    private bool esInvitado = false;
+    private int guestVotacionId = 0;
+    private UsuarioResponseDTO? usuarioActual;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var userJson = await AuthService.GetUsuarioActivoAsync();
+        if (!string.IsNullOrEmpty(userJson))
+        {
+            usuarioActual = JsonSerializer.Deserialize<UsuarioResponseDTO>(userJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            esAdmin = usuarioActual?.Rol == "Administrador" || usuarioActual?.Rol == "Supervisor";
+            esInvitado = usuarioActual?.Rol == "Invitado";
+            
+            if (esInvitado)
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(userJson);
+                    if (doc.RootElement.TryGetProperty("guestVotacionId", out var votProp) || doc.RootElement.TryGetProperty("GuestVotacionId", out votProp))
+                    {
+                        guestVotacionId = votProp.GetInt32();
+                    }
+                }
+                catch { }
+            }
+        }
+
+        if (Id <= 0)
+        {
+            NavigationManager.NavigateTo("/listado-eventos");
+            return;
+        }
+
+        await CargarDetallesEvento();
+        await CargarProyectos();
+    }
+
+    private async Task CargarDetallesEvento()
+    {
+        errorMessage = "";
+        try
+        {
+            evento = await Http.GetFromJsonAsync<EventoDTO>($"api/evento/{Id}");
+            if (evento != null)
+            {
+                evento.FechaInicio = evento.FechaInicio.ToLocalTime();
+                evento.FechaFin = evento.FechaFin.ToLocalTime();
+
+                if (evento.Votacion != null)
+                {
+                    foreach (var v in evento.Votacion)
+                    {
+                        v.FechaInicio = v.FechaInicio.ToLocalTime();
+                        v.FechaFin = v.FechaFin.ToLocalTime();
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al cargar los detalles del evento: {ex.Message}";
+        }
+    }
+
+    private async Task CargarProyectos()
+    {
+        isCargandoProyectos = true;
+        errorMessage = "";
+        try
+        {
+            var response = await Http.GetAsync($"api/eventos/{Id}/proyectos");
+            if (response.IsSuccessStatusCode)
+            {
+                var lst = await response.Content.ReadFromJsonAsync<List<ProyectoDTO>>();
+                proyectos = lst ?? new List<ProyectoDTO>();
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                proyectos = new List<ProyectoDTO>();
+            }
+            else
+            {
+                errorMessage = "Hubo un problema al cargar la lista de proyectos.";
+                proyectos = new List<ProyectoDTO>();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error de conexión al cargar proyectos: {ex.Message}";
+            proyectos = new List<ProyectoDTO>();
+        }
+        finally
+        {
+            isCargandoProyectos = false;
+        }
+    }
+
+    private void AbrirModalCrearProyecto()
+    {
+        proyectoActual = new EstandarProyectoDTO { EventoId = Id };
+        equipoActual.Clear();
+        errorProyecto = "";
+        mostrarModalProyecto = true;
+    }
+
+    private async Task AbrirModalEditarProyecto(ProyectoDTO p)
+    {
+        proyectoActual = new EstandarProyectoDTO
+        {
+            Id = p.Id,
+            Nombre = p.Nombre,
+            Descripcion = p.Descripcion,
+            EventoId = p.EventoId
+        };
+        errorProyecto = "";
+        equipoActual.Clear();
+
+        // Cargar miembros actuales del proyecto
+        try
+        {
+            var response = await Http.GetAsync($"api/proyecto/equipo/{p.Id}");
+            if (response.IsSuccessStatusCode)
+            {
+                var miembros = await response.Content.ReadFromJsonAsync<List<UsuarioBuscadorDto>>();
+                if (miembros != null)
+                {
+                    equipoActual = miembros;
+                }
+            }
+            else
+            {
+                errorProyecto = "No se pudieron cargar los miembros actuales.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorProyecto = $"Error al cargar miembros: {ex.Message}";
+        }
+
+        mostrarModalProyecto = true;
+    }
+
+    private void CerrarModalProyecto()
+    {
+        mostrarModalProyecto = false;
+    }
+
+    private async Task GuardarProyectoYEquipo(List<UsuarioBuscadorDto> equipoSeleccionado)
+    {
+        guardandoProyecto = true;
+        errorProyecto = "";
+
+        try
+        {
+            HttpResponseMessage responseProyecto;
+
+            if (proyectoActual.Id == 0)
+            {
+                responseProyecto = await Http.PostAsJsonAsync<ProyectoDTO>("api/proyecto", proyectoActual);
+            }
+            else
+            {
+                responseProyecto = await Http.PutAsJsonAsync<ProyectoDTO>($"api/proyecto/{proyectoActual.Id}", proyectoActual);
+            }
+
+            if (!responseProyecto.IsSuccessStatusCode)
+            {
+                errorProyecto = "Error al guardar el proyecto.";
+                return;
+            }
+
+            if (proyectoActual.Id == 0)
+            {
+                var json = await responseProyecto.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+                if (json.TryGetProperty("id", out var idProp))
+                {
+                    proyectoActual.Id = idProp.GetInt32();
+                }
+            }
+
+            // Asignar equipo
+            var dtoEquipo = new AsignarConcursanteDto
+            {
+                ProyectoId = proyectoActual.Id,
+                ConcursantesIds = equipoSeleccionado.Select(e => e.Id).ToList()
+            };
+
+            var resEquipo = await Http.PostAsJsonAsync("api/proyecto/equipo/concursantes", dtoEquipo);
+            if (!resEquipo.IsSuccessStatusCode)
+            {
+                errorProyecto = "Se guardó el proyecto pero hubo un error al asignar el equipo.";
+                return;
+            }
+
+            mostrarModalProyecto = false;
+            await CargarProyectos();
+        }
+        catch (Exception ex)
+        {
+            errorProyecto = $"Error inesperado: {ex.Message}";
+        }
+        finally
+        {
+            guardandoProyecto = false;
+        }
+    }
+
+    private void AbrirModalEliminarProyecto(ProyectoDTO p)
+    {
+        proyectoAEliminar = p;
+    }
+
+    private async Task ConfirmarEliminarProyecto()
+    {
+        if (proyectoAEliminar == null) return;
+        errorMessage = "";
+
+        try
+        {
+            var res = await Http.DeleteAsync($"api/proyecto/{proyectoAEliminar.Id}");
+            if (res.IsSuccessStatusCode)
+            {
+                proyectoAEliminar = null;
+                await CargarProyectos();
+            }
+            else
+            {
+                errorMessage = "No se pudo eliminar el proyecto.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al eliminar proyecto: {ex.Message}";
+        }
+    }
+
+    private void AbrirModalEliminarVotacion(VotacionDto v)
+    {
+        votacionAEliminar = v;
+    }
+
+    private async Task ConfirmarEliminarVotacion()
+    {
+        if (votacionAEliminar == null) return;
+        errorMessage = "";
+
+        try
+        {
+            var res = await Http.DeleteAsync($"api/Votacion/{Id}/{votacionAEliminar.Id}");
+            if (res.IsSuccessStatusCode)
+            {
+                votacionAEliminar = null;
+                await CargarDetallesEvento(); // Recargar el evento y sus votaciones
+            }
+            else
+            {
+                errorMessage = "No se pudo eliminar la votación.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al eliminar votación: {ex.Message}";
+        }
+    }
+
+    private void EditarEvento()
+    {
+        NavigationManager.NavigateTo($"/editar-evento?id={Id}&fromDetail=true");
+    }
+
+    private void PrepararEliminarEvento()
+    {
+        eventoGlobalAEliminar = evento;
+        errorBorrarEvento = "";
+    }
+
+    private void CancelarEliminarEvento()
+    {
+        eventoGlobalAEliminar = null;
+    }
+
+    private async Task ConfirmarEliminarEvento()
+    {
+        if (eventoGlobalAEliminar == null) return;
+        
+        isDeletingEvento = true;
+        errorBorrarEvento = "";
+
+        try
+        {
+            var res = await Http.DeleteAsync($"api/evento/{eventoGlobalAEliminar.Id}");
+            if (res.IsSuccessStatusCode)
+            {
+                eventoGlobalAEliminar = null;
+                NavigationManager.NavigateTo("/listado-eventos");
+            }
+            else
+            {
+                errorBorrarEvento = "No se pudo eliminar el evento.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorBorrarEvento = $"Error al eliminar evento: {ex.Message}";
+        }
+        finally
+        {
+            isDeletingEvento = false;
+        }
+    }
+}

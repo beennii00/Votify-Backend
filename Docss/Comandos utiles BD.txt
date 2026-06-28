@@ -1,0 +1,5 @@
+dotnet ef database drop --force --project Votify.Persistance --startup-project API
+
+dotnet ef migrations add ActualizacionEntidades --project Votify.Persistance --startup-project API
+
+dotnet ef database update --project Votify.Persistance --startup-project API

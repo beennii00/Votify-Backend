@@ -1,0 +1,388 @@
+@using System.Text.Json
+@using Shared.DTO
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject Web.Services.SimpleAuthService AuthService
+@inject NavigationManager NavigationManager
+
+<!-- Las páginas de Login/Register tienen su propio layout (AuthLayout) -->
+<nav>
+    <div class="nav-left">
+        @if (usuarioActual != null && usuarioActual.Rol == "Invitado")
+        {
+            <span class="nav-logo" style="cursor: default;">Votify</span>
+        }
+        else if (usuarioActual != null && usuarioActual.Rol == "Concursante")
+        {
+            <a href="dashboard-concursante" class="nav-logo">Votify</a>
+        }
+        else
+        {
+            <a href="listado-eventos" class="nav-logo">Votify</a>
+        }
+        <ul class="nav-links">
+            @if (usuarioActual != null && usuarioActual.Rol == "Concursante")
+            {
+                <li>
+                    <NavLink href="dashboard-concursante" class="nav-link">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="7" height="7" />
+                            <rect x="14" y="3" width="7" height="7" />
+                            <rect x="14" y="14" width="7" height="7" />
+                            <rect x="3" y="14" width="7" height="7" />
+                        </svg>
+                        Dashboard
+                    </NavLink>
+                </li>
+            }
+            @if (usuarioActual != null && usuarioActual.Rol != "Invitado")
+            {
+                <li>
+                    <NavLink href="listado-eventos" class="nav-link" Match="NavLinkMatch.All">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2" />
+                            <line x1="16" y1="2" x2="16" y2="6" />
+                            <line x1="8" y1="2" x2="8" y2="6" />
+                            <line x1="3" y1="10" x2="21" y2="10" />
+                        </svg>
+                        Eventos
+                    </NavLink>
+                </li>
+            }
+        </ul>
+    </div>
+
+    <div class="nav-right" style="position: relative;">
+        @if (usuarioActual != null)
+        {
+            @if (usuarioActual.Rol != "Invitado")
+            {
+                <span class="badge-admin">@usuarioActual.Rol</span>
+            }
+            else
+            {
+                <span class="badge-admin" style="background:var(--accent); color:white; border:none;">Invitado Popular</span>
+            }
+
+            @* ── PROFILE DROPDOWN (mejorado) ── *@
+            <div class="profile-dropdown-wrapper">
+                <button type="button" class="profile-trigger" @onclick="ToggleUserMenu" @onclick:stopPropagation="true">
+                    @if (!string.IsNullOrEmpty(usuarioActual.Avatar))
+                    {
+                        <span class="profile-trigger-avatar">@usuarioActual.Avatar</span>
+                    }
+                    else
+                    {
+                        <div class="nav-avatar">@(string.IsNullOrEmpty(usuarioActual.Nombre) ? "?" : usuarioActual.Nombre.Substring(0, 2).ToUpper())</div>
+                    }
+                    <span class="profile-trigger-name">@usuarioActual.Nombre</span>
+                    <svg class="profile-trigger-chevron @(userMenuOpen ? "open" : "")" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </button>
+
+                @if (userMenuOpen || userMenuClosing)
+                {
+                    <div class="profile-dropdown-overlay" @onclick="CloseUserMenuAsync"></div>
+                    <div class="profile-dropdown @(userMenuClosing ? "closing" : "")">
+                        <div class="profile-dropdown-header">
+                            <span class="profile-dropdown-avatar">@(usuarioActual.Avatar ?? "👤")</span>
+                            <div class="profile-dropdown-info">
+                                <span class="profile-dropdown-name">@usuarioActual.Nombre</span>
+                                <span class="profile-dropdown-role">@usuarioActual.Rol</span>
+                            </div>
+                        </div>
+                        <div class="profile-dropdown-divider"></div>
+                        <button type="button" class="profile-dropdown-item" @onclick="GoToProfile">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="12" cy="7" r="4"></circle>
+                            </svg>
+                            Editar perfil
+                        </button>
+                        <div class="profile-dropdown-divider"></div>
+                        <button type="button" class="profile-dropdown-item profile-dropdown-logout" @onclick="CerrarSesion">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                                <polyline points="16 17 21 12 16 7"></polyline>
+                                <line x1="21" y1="12" x2="9" y2="12"></line>
+                            </svg>
+                            Cerrar sesión
+                        </button>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</nav>
+
+<style>
+    /* ── PROFILE DROPDOWN TRIGGER ── */
+    .profile-dropdown-wrapper {
+        position: relative;
+    }
+
+    .profile-trigger {
+        display: flex;
+        align-items: center;
+        gap: .6rem;
+        background: rgba(255,255,255,.04);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: .35rem .75rem .35rem .45rem;
+        cursor: pointer;
+        color: var(--text);
+        font-family: 'DM Sans', sans-serif;
+        font-size: .85rem;
+        transition: all .2s ease;
+    }
+
+    .profile-trigger:hover {
+        background: rgba(255,255,255,.08);
+        border-color: rgba(79,124,255,.3);
+    }
+
+    .profile-trigger-avatar {
+        font-size: 1.4rem;
+        line-height: 1;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: rgba(79,124,255,.1);
+    }
+
+    .profile-trigger-name {
+        font-weight: 500;
+        color: var(--muted);
+    }
+
+    .profile-trigger-chevron {
+        width: 14px;
+        height: 14px;
+        color: var(--muted);
+        transition: transform .2s ease;
+        flex-shrink: 0;
+    }
+
+    .profile-trigger-chevron.open {
+        transform: rotate(180deg);
+    }
+
+    /* ── DROPDOWN PANEL ── */
+    .profile-dropdown-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 99;
+    }
+
+    .profile-dropdown {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        min-width: 240px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 8px 32px rgba(0,0,0,.4), 0 0 0 1px rgba(79,124,255,.05);
+        padding: .5rem;
+        z-index: 100;
+        animation: dropdownIn .2s ease both;
+    }
+
+    @@keyframes dropdownIn {
+        from {
+            opacity: 0;
+            transform: translateY(-8px) scale(.96);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+
+    .profile-dropdown.closing {
+        animation: dropdownOut .2s ease both;
+    }
+
+    @@keyframes dropdownOut {
+        from {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+        to {
+            opacity: 0;
+            transform: translateY(-8px) scale(.96);
+        }
+    }
+
+    .profile-dropdown-header {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        padding: .65rem .75rem;
+    }
+
+    .profile-dropdown-avatar {
+        font-size: 1.8rem;
+        line-height: 1;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: rgba(79,124,255,.1);
+        flex-shrink: 0;
+    }
+
+    .profile-dropdown-info {
+        display: flex;
+        flex-direction: column;
+        gap: .1rem;
+        min-width: 0;
+    }
+
+    .profile-dropdown-name {
+        font-weight: 600;
+        font-size: .9rem;
+        color: var(--text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .profile-dropdown-role {
+        font-size: .72rem;
+        color: var(--accent);
+        font-weight: 600;
+        font-family: 'Syne', sans-serif;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+    }
+
+    .profile-dropdown-divider {
+        height: 1px;
+        background: var(--border);
+        margin: .25rem .5rem;
+    }
+
+    .profile-dropdown-item {
+        display: flex;
+        align-items: center;
+        gap: .6rem;
+        padding: .6rem .75rem;
+        border-radius: 10px;
+        font-size: .85rem;
+        font-weight: 500;
+        color: var(--muted);
+        text-decoration: none;
+        transition: all .15s ease;
+        cursor: pointer;
+        background: none;
+        border: none;
+        width: 100%;
+        font-family: 'DM Sans', sans-serif;
+    }
+
+    .profile-dropdown-item:hover {
+        background: rgba(255,255,255,.06);
+        color: var(--text);
+    }
+
+    .profile-dropdown-item svg {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+    }
+
+    .profile-dropdown-logout {
+        color: var(--danger);
+    }
+
+    .profile-dropdown-logout:hover {
+        background: rgba(255,79,110,.08);
+        color: var(--danger);
+    }
+</style>
+
+<main>
+    @Body
+</main>
+
+@code {
+    private UsuarioResponseDTO? usuarioActual;
+    private bool userMenuOpen = false;
+    private bool userMenuClosing = false;
+
+    private async Task ToggleUserMenu()
+    {
+        if (userMenuOpen && !userMenuClosing)
+            await CloseUserMenuAsync();
+        else if (!userMenuOpen)
+            userMenuOpen = true;
+    }
+
+    private async Task CloseUserMenuAsync()
+    {
+        userMenuClosing = true;
+        StateHasChanged();
+        await Task.Delay(200);
+        userMenuOpen = false;
+        userMenuClosing = false;
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            AuthService.OnAuthStateChanged += OnAuthChanged;
+            await CargarUsuario();
+        }
+    }
+
+    private async void OnAuthChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await CargarUsuario();
+        });
+    }
+
+    private async Task CargarUsuario()
+    {
+        var userJson = await AuthService.GetUsuarioActivoAsync();
+        if (!string.IsNullOrEmpty(userJson))
+        {
+            usuarioActual = JsonSerializer.Deserialize<UsuarioResponseDTO>(userJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            StateHasChanged();
+        }
+        else
+        {
+            NavigationManager.NavigateTo("/login");
+        }
+    }
+
+    private async Task GoToProfile()
+    {
+        await CloseUserMenuAsync();
+        NavigationManager.NavigateTo("perfil");
+    }
+
+    private async Task CerrarSesion()
+    {
+        await CloseUserMenuAsync();
+        await AuthService.LogOutAsync();
+        usuarioActual = null;
+        NavigationManager.NavigateTo("/login");
+    }
+
+    public void Dispose()
+    {
+        AuthService.OnAuthStateChanged -= OnAuthChanged;
+    }
+}
+

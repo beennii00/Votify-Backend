@@ -1,0 +1,29 @@
+@API_HostAddress = http://localhost:5000
+
+GET {{API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+### Listar eventos
+GET {{API_HostAddress}}/evento/
+Accept: application/json
+
+### Crear evento (admin)
+POST {{API_HostAddress}}/evento/
+Content-Type: application/json
+
+{
+  "nombre": "Hackathon 2025",
+  "descripcion": "Evento anual de innovación",
+  "fechaInicio": "2025-06-01T09:00:00",
+  "fechaFin": "2025-06-03T18:00:00"
+}
+
+### Error: fecha fin anterior a inicio
+POST {{API_HostAddress}}/evento/
+Content-Type: application/json
+
+{
+  "nombre": "Evento inválido",
+  "fechaInicio": "2025-06-10T09:00:00",
+  "fechaFin": "2025-06-01T18:00:00"
+}
